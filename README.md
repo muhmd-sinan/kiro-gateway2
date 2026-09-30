@@ -12,12 +12,10 @@ The package ships two things that share one engine:
 Both use the same account pool, token refresh, rate-limit backoff, and request queue. How it works
 inside is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Set up on a new machine
+## Set up with OpenCode on a new machine
 
-This repo is private. The owner has to invite you first (Settings → Collaborators on GitHub).
-
-1. Install [Git](https://git-scm.com), [Bun](https://bun.sh) 1.3+ (or Node 20+), and have a Kiro
-   account.
+1. Install [Git](https://git-scm.com), [Bun](https://bun.sh) 1.3+, and
+   [OpenCode](https://opencode.ai). You need a Kiro account.
 2. Clone and build:
 
    ```bash
@@ -27,12 +25,21 @@ This repo is private. The owner has to invite you first (Settings → Collaborat
    bun run build
    ```
 
-3. Sign in with your own Kiro account: `node dist/server/cli.js login`
-4. Start the proxy: `node dist/server/cli.js`
-5. Copy the client settings it prints (address and bearer token) into Claude Code or your client.
-   See [Claude Code](#claude-code) below.
+3. Point OpenCode at the folder in `~/.config/opencode/opencode.json` (use your own path, with
+   forward slashes on Windows):
 
-Each person signs in with their own Kiro account. Don't share tokens or the `kiro.db` file.
+   ```json
+   {
+     "plugin": ["C:/path/to/kiro-gateway2"]
+   }
+   ```
+
+4. Sign in: `opencode auth login` → Other → `kiro`, or run `kiro-cli login` if you already use
+   Kiro CLI.
+5. Start `opencode` and pick a Kiro model with `/models`.
+
+After a `git pull`, run `bun run build` again. Each person signs in with their own Kiro account.
+Don't share tokens or the `kiro.db` file.
 
 ## Features
 

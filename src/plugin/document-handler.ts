@@ -58,6 +58,31 @@ function isDocumentBlock(block: any): boolean {
   return block?.type === 'document' && block.source && typeof block.source === 'object'
 }
 
+const DATA_URI = /^data:([^;,]+);base64,(.*)$/s
+
+/**
+ * OpenAI chat `file` part → Anthropic document block, or null if not one.
+ *
+ * OpenCode talks to the plugin through @ai-sdk/openai-compatible, which encodes
+ * a PDF attachment as `{type: 'file', file: {filename, file_data: 'data:...'}}`
+ * rather than an Anthropic `document` block. Without this the plugin advertised
+ * PDF input but dropped every PDF it was sent.
+ */
+function fromOpenAIFilePart(block: any): any | null {
+  if (block?.type !== 'file' || typeof block.file?.file_data !== 'string') return null
+  const match = DATA_URI.exec(block.file.file_data)
+  if (!match) return null
+  return {
+    type: 'document',
+    source: { type: 'base64', media_type: match[1], data: match[2] },
+    ...(typeof block.file.filename === 'string' ? { title: block.file.filename } : {})
+  }
+}
+
+function asDocumentBlock(block: any): any | null {
+  return isDocumentBlock(block) ? block : fromOpenAIFilePart(block)
+}
+
 /**
  * Document blocks in a message, including ones nested in tool results.
  *
@@ -68,9 +93,13 @@ function collectBlocks(content: unknown): any[] {
   if (!Array.isArray(content)) return []
   const blocks: any[] = []
   for (const block of content) {
-    if (isDocumentBlock(block)) blocks.push(block)
+    const doc = asDocumentBlock(block)
+    if (doc) blocks.push(doc)
     else if (block?.type === 'tool_result' && Array.isArray(block.content)) {
-      for (const inner of block.content) if (isDocumentBlock(inner)) blocks.push(inner)
+      for (const inner of block.content) {
+        const innerDoc = asDocumentBlock(inner)
+        if (innerDoc) blocks.push(innerDoc)
+      }
     }
   }
   return blocks

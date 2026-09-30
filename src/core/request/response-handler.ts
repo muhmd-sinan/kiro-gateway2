@@ -67,18 +67,31 @@ export class ResponseHandler {
     conversationId: string,
     toolNameMap?: ToolNameMap
   ): Promise<Response> {
-    const s = transformSdkStream(sdkResponse, model, conversationId, toolNameMap)
+    // Same stream options as the standalone proxy (KiroRuntime.stream).
+    const s = transformSdkStream(sdkResponse, model, conversationId, toolNameMap, {
+      streamToolInput: true
+    })
+    let cancelled = false
     return new Response(
       new ReadableStream({
         async start(c) {
           try {
             for await (const e of s) {
+              if (cancelled) break
               c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(e)}\n\n`))
             }
-            c.close()
+            if (!cancelled) c.close()
           } catch (err) {
-            c.error(err)
+            if (!cancelled) c.error(err)
           }
+        },
+        // OpenCode aborting a turn (Esc, a killed subagent) cancels this stream.
+        // Without cancel() the loop above kept draining Kiro's response to the
+        // end, spending credits for a reader that was gone — the same fix the
+        // proxy's pumpStream has for client disconnects.
+        cancel() {
+          cancelled = true
+          void s.return(undefined).catch(() => {})
         }
       }),
       { headers: { 'Content-Type': 'text/event-stream' } }

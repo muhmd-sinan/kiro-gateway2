@@ -164,8 +164,8 @@ Add it to `opencode.json`:
 ```
 
 The plugin registers the `kiro` provider with every model plus a `-thinking` companion for each
-model that supports effort. Pick one with `/models` and cycle its variants to change reasoning
-depth.
+Claude model that supports effort. GPT 5.6 models always reason, so their effort variants sit on
+the base entry. Pick one with `/models` and cycle its variants to change reasoning depth.
 
 Sign in with `kiro-cli login` (imported on startup) or `opencode auth login` → Other → `kiro`.
 For IAM Identity Center, enter your Start URL and region when prompted; the TUI `/connect` flow
@@ -187,7 +187,7 @@ proxy and the plugin. A default file is created on first run.
 | `idc_start_url`, `idc_region`, `idc_profile_arn` | — | IAM Identity Center defaults |
 | `auto_sync_kiro_cli` | `true` | Import sessions from `kiro-cli` / Kiro IDE |
 | `max_concurrent_requests` | `4` | Upstream requests started at once. `1` fully serializes. |
-| `history_image_messages` | `3` | Proxy only: history messages that keep their images/PDFs |
+| `history_image_messages` | `3` | History messages that keep their images/PDFs |
 | `web_search_enabled` | `true` | Needs a Pro account |
 | `effort` | — | Force one effort level for every request |
 | `auto_effort_mapping` | `true` | Map thinking budgets to effort levels |

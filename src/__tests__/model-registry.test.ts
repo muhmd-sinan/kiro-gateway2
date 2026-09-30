@@ -80,11 +80,26 @@ describe('model registry', () => {
       }
     })
 
-    test('non-thinking models declare neither', () => {
+    test('non-thinking Claude models and auto declare neither', () => {
       for (const [id, model] of Object.entries(registry)) {
-        if (id.endsWith('-thinking')) continue
+        if (id.endsWith('-thinking') || id.startsWith('gpt-')) continue
         expect(model.reasoning).toBeUndefined()
         expect(model.interleaved).toBeUndefined()
+      }
+    })
+
+    test('GPT models carry reasoning flags and the full effort ladder on the base entry', () => {
+      for (const id of ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol']) {
+        const model = registry[id]
+        expect(model.reasoning).toBe(true)
+        expect(model.interleaved).toEqual({ field: 'reasoning_content' })
+        expect(Object.keys(model.variants)).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+        const kiroModel = resolveKiroModel(id)
+        for (const [name, variant] of Object.entries<any>(model.variants)) {
+          expect(budgetToEffort(variant.thinkingConfig.thinkingBudget, kiroModel)).toBe(
+            name as Effort
+          )
+        }
       }
     })
   })

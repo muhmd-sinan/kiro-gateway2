@@ -85,7 +85,7 @@ export const KiroConfigSchema = z.object({
   max_concurrent_requests: z.number().min(1).max(16).default(4),
 
   /**
-   * Standalone proxy only: keep images in the N most recent image-bearing
+   * Keep images in the N most recent image-bearing
    * history messages and replace older ones with a text note. Every historical
    * image is re-uploaded on every request, so a long screenshot-heavy session
    * pays for all of them each turn. The current message always keeps its images.

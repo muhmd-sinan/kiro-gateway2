@@ -20,7 +20,7 @@ bun run src/server/cli.ts login       # device-code auth, no server
 
 `build` is mandatory before anything consumes `dist/`: `tsc` emits extensionless relative imports and `scripts/fix-esm-imports.mjs` rewrites them to `./foo.js` / `./foo/index.js` so Bun 1.3.13+ and Node can load the output. The npm `bin` (`kiro-proxy`) and the tray scripts run `dist/`, not `src/`.
 
-Baseline is **311 pass / 1 skip / 0 fail**. Any failure is a regression.
+Baseline is **323 pass / 1 skip / 0 fail**. Any failure is a regression.
 
 ## Architecture
 

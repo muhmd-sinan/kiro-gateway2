@@ -123,8 +123,8 @@ export class KiroRuntime {
       maxUses = plan.maxUses
     }
 
-    // Proxy-only history shaping; the OpenCode plugin never passes these, so its
-    // requests are built exactly as before. See HistoryOptions.
+    // Kept identical to RequestHandler.handleKiroRequest (the OpenCode plugin
+    // path) so both surfaces shape history the same way. See HistoryOptions.
     const historyOptions: HistoryOptions = {
       historyImageMessages: this.config.history_image_messages,
       preserveLoopText: true,

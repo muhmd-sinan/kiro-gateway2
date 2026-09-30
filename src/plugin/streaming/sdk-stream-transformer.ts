@@ -46,8 +46,10 @@ export interface StreamTransformOptions {
    * Kiro sends a tool call as many small toolUseEvent fragments — measured live,
    * a file write arrived as 224 fragments spread over ~9.4s. Buffering them meant
    * Claude Code saw nothing for that whole window and then the entire call at
-   * once. Streaming lets it render the call as it forms. Proxy-only; the OpenCode
-   * plugin keeps the buffered behaviour.
+   * once. Streaming lets it render the call as it forms. Both surfaces enable it:
+   * the OpenAI view (transformSdkStream) turns each fragment into a
+   * `tool_calls[].function.arguments` delta, which @ai-sdk/openai-compatible
+   * accumulates per index until the arguments parse as JSON.
    */
   streamToolInput?: boolean
 }
@@ -433,13 +435,15 @@ export async function* transformSdkStream(
   sdkResponse: any,
   model: string,
   conversationId: string,
-  toolNameMap?: ToolNameMap
+  toolNameMap?: ToolNameMap,
+  options: StreamTransformOptions = {}
 ): AsyncGenerator<any> {
   for await (const event of transformSdkStreamEvents(
     sdkResponse,
     model,
     conversationId,
-    toolNameMap
+    toolNameMap,
+    options
   )) {
     const chunk = convertToOpenAI(event, conversationId, model)
     if (chunk !== null) yield chunk

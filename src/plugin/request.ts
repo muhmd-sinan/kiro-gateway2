@@ -216,7 +216,7 @@ function buildCodeWhispererRequest(
         }
       }
 
-      // Proxy-only (see HistoryOptions.documents): the plugin path is unchanged.
+      // See HistoryOptions.documents. Covers OpenAI `file` parts too (document-handler.ts).
       if (historyOptions?.documents && hasDocuments(curMsg.content)) {
         const target: any = { content: curContent }
         attachDocuments(target, extractDocuments(curMsg.content))

@@ -86,7 +86,7 @@ describe('request building', () => {
     ]
   }
 
-  test('proxy path attaches the PDF to the current message', () => {
+  test('attaches the PDF to the current message when documents are on', () => {
     const prep = transformToSdkRequest(
       body,
       'claude-opus-5',
@@ -106,7 +106,43 @@ describe('request building', () => {
     expect(uim.content).toContain('summarize')
   })
 
-  test('OpenCode plugin path (no option) is unchanged', () => {
+  test('attaches a PDF sent as an OpenAI file part, which is how OpenCode sends one', () => {
+    const openaiBody = {
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'summarize' },
+            {
+              type: 'file',
+              file: { filename: 'doc.pdf', file_data: `data:application/pdf;base64,${PDF_B64}` }
+            }
+          ]
+        }
+      ]
+    }
+    const prep = transformToSdkRequest(
+      openaiBody,
+      'claude-opus-5',
+      AUTH,
+      false,
+      20000,
+      undefined,
+      {},
+      'c',
+      { documents: true }
+    )
+    const uim: any = prep.conversationState.currentMessage.userInputMessage
+    expect(uim.documents).toHaveLength(1)
+    expect(uim.documents[0].name).toBe('doc')
+    expect(Buffer.from(uim.documents[0].source.bytes).toString()).toBe('%PDF-1.4 fake body')
+  })
+
+  test('ignores file parts that are not base64 data URIs', () => {
+    expect(hasDocuments([{ type: 'file', file: { file_data: 'https://x/doc.pdf' } }])).toBe(false)
+  })
+
+  test('without the documents option, documents are not attached', () => {
     const prep = transformToSdkRequest(body, 'claude-opus-5', AUTH)
     const uim: any = prep.conversationState.currentMessage.userInputMessage
     expect(uim.documents).toBeUndefined()

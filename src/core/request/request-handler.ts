@@ -127,11 +127,18 @@ export class RequestHandler {
 
     let result: { sdkResponse: any; sdkPrep: SdkPreparedRequest }
     try {
+      // Same history shaping as the standalone proxy (see KiroRuntime.stream), so
+      // both surfaces send Kiro identical requests for the same conversation.
       result = await this.executeWithRetry(
         body,
         model,
         conversationIdFor(readSessionHeader(init)),
-        showToast
+        showToast,
+        {
+          historyImageMessages: this.config.history_image_messages,
+          preserveLoopText: true,
+          documents: true
+        }
       )
     } catch (e) {
       // OpenCode's fetch hook expects a Response, so recoverable upstream errors

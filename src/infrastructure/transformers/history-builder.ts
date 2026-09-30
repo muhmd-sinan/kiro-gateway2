@@ -12,11 +12,12 @@ import { deduplicateToolResults, toolResultStatus } from './tool-transformer.js'
 const LOOP_PLACEHOLDER = '[system: tool calling continues]'
 
 /**
- * Per-request history shaping, set only by the standalone proxy.
+ * Per-request history shaping.
  *
- * The OpenCode plugin never passes these, so its history is built exactly as
- * before. They reach here through RequestHandler.execute, which only the proxy
- * calls.
+ * Both surfaces pass the same values (KiroRuntime.stream for the proxy,
+ * RequestHandler.handleKiroRequest for the OpenCode plugin), so one conversation
+ * builds the same Kiro request whichever client sent it. Omitting them keeps
+ * the legacy behaviour, which only direct callers and tests rely on.
  */
 export interface HistoryOptions {
   /**
@@ -51,7 +52,7 @@ export interface HistoryOptions {
  *
  * By default strips text from intermediate ASST(toolUses)→USER(toolResults)
  * pairs, keeping only the first assistant text and all tool_use/tool_result
- * pairs. With `preserveLoopText`, which the proxy sets, only text identical to
+ * pairs. With `preserveLoopText`, which both surfaces set, only text identical to
  * the loop's first turn is stripped: conversation ids are now stable per chat
  * (session-map.ts), so the duplicate-preamble cause is gone, and the blanket
  * strip was deleting the model's own reasoning between tool calls.

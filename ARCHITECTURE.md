@@ -66,10 +66,12 @@ parsing) is shared. Each surface only adds its own wire format.
 and the same call sent to Hermes come from the same code. New output formats should be new
 serializers; don't parse the Kiro stream a second time.
 
-**Proxy behavior is opt-in.** Anything added for the proxy is enabled by a parameter that only the
-proxy passes: `HistoryOptions` (image/document retention, keeping reasoning in tool loops, PDF
-support), `StreamTransformOptions.streamToolInput`, and `ProxyRequest.serverTools`. The OpenCode
-plugin never passes them, so its requests are built exactly as before. Tests cover both paths.
+**Both surfaces shape requests the same way.** `HistoryOptions` (image/document retention,
+keeping reasoning in tool loops, PDF support) and `StreamTransformOptions.streamToolInput` are
+passed with identical values by `KiroRuntime.stream` (proxy) and `RequestHandler.handleKiroRequest`
+(plugin), so a conversation builds the same Kiro request whichever client sent it. Omitting them
+keeps the legacy behaviour for direct callers and tests. Only `ProxyRequest.serverTools` is
+proxy-only: the plugin exposes web search as its own `kiro_web_search` tool instead.
 
 **Never reject a model id.** Hermes treats a model error as permanent and breaks the session, and
 Claude Code can't list what the proxy supports. `resolveModelId` always returns something usable.
@@ -153,7 +155,7 @@ the limit. So the setting caps how many requests are being started at once, whic
 - **Tool results** carry `status: error` when the client set `is_error`, so the model knows a
   command failed.
 - **Tool loops**: `collapseAgenticLoops` replaces repeated assistant text between tool calls with a
-  placeholder. The proxy sets `preserveLoopText`, so the model's own reasoning between calls is
+  placeholder. Both surfaces set `preserveLoopText`, so the model's own reasoning between calls is
   kept and only exact repeats and empty turns are collapsed.
 - **Tool names** that Kiro would reject are replaced with aliases through a per-request registry
   and restored on the way back.
@@ -161,7 +163,8 @@ the limit. So the setting caps how many requests are being started at once, whic
   `allOf` merged, nullable unions flattened.
 - **Images** become `images` (at most 4 per message). **Documents** (`plugin/document-handler.ts`)
   become `documents`, including PDFs nested inside a `tool_result`, which is how Claude Code's Read
-  tool returns them. Plain-text documents are pasted in as text. Only the newest
+  tool returns them, and OpenAI `file` parts (`file_data` data URIs), which is how OpenCode's
+  `@ai-sdk/openai-compatible` sends a PDF. Plain-text documents are pasted in as text. Only the newest
   `history_image_messages` history messages keep their images and documents; older ones get a
   text note instead.
 - **Reasoning fields** (`plugin/effort.ts`): see below.
@@ -190,9 +193,11 @@ that don't accept it.
   `<thinking>` tags into its text instead, they're pulled out as a fallback, ignoring tags inside
   code blocks.
 - **Tool calls** arrive as many `toolUseEvent` pieces (one file write measured 224 pieces over
-  ~9s). With `streamToolInput` (proxy) each piece goes out as an `input_json_delta` as it arrives;
-  the first tool block appeared at 3.1s instead of 12.4s. Without it (plugin), calls are buffered
-  and sent once at the end.
+  ~9s). With `streamToolInput` (both surfaces) each piece goes out as an `input_json_delta` as it
+  arrives; the first tool block appeared at 3.1s instead of 12.4s. The plugin's OpenAI view turns
+  those into `tool_calls[].function.arguments` deltas. Without it, calls are buffered and sent
+  once at the end. The plugin's response stream implements `cancel()`, so an aborted OpenCode turn
+  stops draining Kiro the same way a proxy client disconnect does.
 - **Block order**: only one block is open at a time. Opening a tool block closes text and
   thinking first, and text after a tool call opens a new block. Every block gets exactly one
   `content_block_stop`; Claude Code stalls on a block that never closes. Tests check this order.

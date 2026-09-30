@@ -12,6 +12,28 @@ The package ships two things that share one engine:
 Both use the same account pool, token refresh, rate-limit backoff, and request queue. How it works
 inside is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Set up on a new machine
+
+This repo is private. The owner has to invite you first (Settings → Collaborators on GitHub).
+
+1. Install [Git](https://git-scm.com), [Bun](https://bun.sh) 1.3+ (or Node 20+), and have a Kiro
+   account.
+2. Clone and build:
+
+   ```bash
+   git clone https://github.com/muhmd-sinan/kiro-gateway2.git
+   cd kiro-gateway2
+   bun install
+   bun run build
+   ```
+
+3. Sign in with your own Kiro account: `node dist/server/cli.js login`
+4. Start the proxy: `node dist/server/cli.js`
+5. Copy the client settings it prints (address and bearer token) into Claude Code or your client.
+   See [Claude Code](#claude-code) below.
+
+Each person signs in with their own Kiro account. Don't share tokens or the `kiro.db` file.
+
 ## Features
 
 - **Claude Code support**: streaming, thinking, tool calls streamed while they're still being

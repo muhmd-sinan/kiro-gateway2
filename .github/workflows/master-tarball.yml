@@ -1,0 +1,70 @@
+name: Build and publish tarball
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  tarball:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+
+      - run: bun test
+
+      - run: bun run typecheck
+
+      - run: bun run build
+
+      - name: Pack tarball
+        run: npm pack
+
+      - name: Rename tarball to fixed name
+        run: mv *.tgz opencode-kiro-auth.tgz
+
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if gh release view "_master" >/dev/null 2>&1; then
+            echo "release_exists=true" >> $GITHUB_ENV
+          else
+            echo "release_exists=false" >> $GITHUB_ENV
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release if missing
+        if: env.release_exists != 'true'
+        run: |
+          gh release create "_master" \
+            --target master \
+            --prerelease \
+            --title "Nightly Build master" \
+            --notes "Nightly build. Commit: ${{ github.sha }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure _master tag points at HEAD
+        run: |
+          git tag -f _master HEAD
+          git push origin _master --force
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old tarball asset
+        run: gh release delete-asset _master opencode-kiro-auth.tgz --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload tarball
+        run: gh release upload _master opencode-kiro-auth.tgz --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

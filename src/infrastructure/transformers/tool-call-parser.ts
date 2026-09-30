@@ -1,0 +1,72 @@
+import type { ToolCall } from '../../plugin/types'
+
+/**
+ * Literal every bracket-style call starts with.
+ *
+ * The pattern below nests quantifiers (`(?:\{[^}]*\}[^}]*)*`), so its cost grows
+ * sharply on brace-heavy input that never matches — which is exactly what an
+ * assistant turn full of code is. This runs over the *entire* response text at
+ * the end of every stream, so the substring check is what keeps the common case
+ * (no bracket calls at all, i.e. every well-behaved model) at one scan instead of
+ * a backtracking search.
+ */
+const BRACKET_CALL_MARKER = '[Called '
+
+export function parseBracketToolCalls(text: string): ToolCall[] {
+  if (!text.includes(BRACKET_CALL_MARKER)) return []
+
+  const toolCalls: ToolCall[] = []
+  const pattern = /\[Called\s+(\w+)\s+with\s+args:\s*(\{[^}]*(?:\{[^}]*\}[^}]*)*\})\]/gs
+
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(text)) !== null) {
+    const funcName = match[1]
+    const argsStr = match[2]
+
+    if (!funcName || !argsStr) continue
+
+    try {
+      const args = JSON.parse(argsStr)
+      toolCalls.push({
+        toolUseId: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: funcName,
+        input: args
+      })
+    } catch (e) {
+      continue
+    }
+  }
+
+  return toolCalls
+}
+
+export function deduplicateToolCalls(toolCalls: ToolCall[]): ToolCall[] {
+  const seen = new Set<string>()
+  const unique: ToolCall[] = []
+
+  for (const tc of toolCalls) {
+    if (!seen.has(tc.toolUseId)) {
+      seen.add(tc.toolUseId)
+      unique.push(tc)
+    }
+  }
+
+  return unique
+}
+
+export function cleanToolCallsFromText(text: string, toolCalls: ToolCall[]): string {
+  let cleaned = text
+
+  for (const tc of toolCalls) {
+    const funcName = tc.name
+    const escapedName = funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(
+      `\\[Called\\s+${escapedName}\\s+with\\s+args:\\s*\\{[^}]*(?:\\{[^}]*\\}[^}]*)*\\}\\]`,
+      'gs'
+    )
+    cleaned = cleaned.replace(pattern, '')
+  }
+
+  cleaned = cleaned.replace(/\s+/g, ' ').trim()
+  return cleaned
+}

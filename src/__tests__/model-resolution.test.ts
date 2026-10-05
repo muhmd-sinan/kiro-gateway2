@@ -27,6 +27,8 @@ describe('resolveKiroModel', () => {
     expect(resolveKiroModel('claude-sonnet-4-6')).toBe('claude-sonnet-4.6')
     expect(resolveKiroModel('claude-sonnet-4-6-1m')).toBe('claude-sonnet-4.6-1m')
     expect(resolveKiroModel('claude-sonnet-5')).toBe('claude-sonnet-5')
+    expect(resolveKiroModel('claude-sonnet-5-5')).toBe('claude-sonnet-5.5')
+    expect(resolveKiroModel('claude-sonnet-5-5-thinking')).toBe('claude-sonnet-5.5')
     expect(resolveKiroModel('claude-opus-4-8')).toBe('claude-opus-4.8')
     expect(resolveKiroModel('claude-opus-5')).toBe('claude-opus-5')
   })

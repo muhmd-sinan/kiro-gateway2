@@ -26,11 +26,12 @@ import { MODEL_MAPPING, SUPPORTED_MODELS } from '../constants.js'
  */
 const TIER_MODELS = {
   // Verified live: claude-opus-5.5 accepts requests with and without thinking
-  // (see thinkingDisableable in effort.ts for why "without" needed a fix).
+  // (see thinkingToggleable in effort.ts for why "without" sends no thinking field).
   opus: 'claude-opus-5-5',
-  sonnet: 'claude-sonnet-5',
+  // Verified live 2026-10-05 (scripts/smoke.mjs claude-sonnet-5.5).
+  sonnet: 'claude-sonnet-5-5',
   // Kiro exposes no Haiku, and the cheap open-weight models are no longer
-  // advertised. GPT Luna (1.1x) is the least expensive model left, which matters
+  // advertised. GPT Luna (0.6x) is the least expensive model left, which matters
   // because Claude Code routes session titles and classifiers to the haiku tier
   // on nearly every turn.
   haiku: 'gpt-5.6-luna'
@@ -112,6 +113,7 @@ const ALIASES: Record<string, string> = {
   'claude-sonnet-4.6': 'claude-sonnet-4-6',
   'claude-opus-4.8': 'claude-opus-4-8',
   'claude-opus-5.5': 'claude-opus-5-5',
+  'claude-sonnet-5.5': 'claude-sonnet-5-5',
 
   // Retired models. Kiro's backend still accepts several of these, but they sit
   // below the quality floor this proxy advertises, so requests are lifted to the

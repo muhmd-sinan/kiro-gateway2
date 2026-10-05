@@ -65,7 +65,8 @@ Don't share tokens or the `kiro.db` file.
 | `claude-opus-5-5[1m]` | claude-opus-5.5 | Claude Code's `opus` / `opusplan` tier |
 | `claude-opus-5[1m]` | claude-opus-5 | |
 | `claude-opus-4-8[1m]` | claude-opus-4.8 | |
-| `claude-sonnet-5[1m]` | claude-sonnet-5 | Claude Code's `sonnet` tier |
+| `claude-sonnet-5-5[1m]` | claude-sonnet-5.5 | Claude Code's `sonnet` tier |
+| `claude-sonnet-5[1m]` | claude-sonnet-5 | |
 | `claude-sonnet-4-6[1m]` | claude-sonnet-4.6-1m | |
 | `claude-sol[1m]` / `claude-terra[1m]` / `claude-luna[1m]` | gpt-5.6-sol / terra / luna | Renamed so Claude Code's model picker shows them. Luna is the `haiku` tier. |
 | `auto[1m]` | auto | Kiro picks the model |
@@ -189,8 +190,9 @@ proxy and the plugin. A default file is created on first run.
 | `max_concurrent_requests` | `4` | Upstream requests started at once. `1` fully serializes. |
 | `history_image_messages` | `3` | History messages that keep their images/PDFs |
 | `web_search_enabled` | `true` | Needs a Pro account |
-| `effort` | — | Force one effort level for every request |
+| `effort` | — | Force one effort level for every request (overrides the client) |
 | `auto_effort_mapping` | `true` | Map thinking budgets to effort levels |
+| `default_effort` | `xhigh` | Effort when the client sends no effort level and no thinking budget |
 | `rate_limit_retry_delay_ms` | `5000` | |
 | `rate_limit_max_retries` | `3` | |
 | `max_request_iterations` | `20` | Retry-loop cap |
@@ -209,8 +211,17 @@ Effort per thinking budget:
 | ≤ 98304 | `xhigh` |
 | > 98304 | `max` |
 
-`xhigh` exists on sonnet-5, opus-4.8, opus-5, opus-5.5 and the GPT models. Elsewhere it's clamped
+`xhigh` exists on sonnet-5, sonnet-5.5, opus-4.8, opus-5, opus-5.5 and the GPT models. Elsewhere it's clamped
 to `max`.
+
+Clients can pick effort per request: Claude Code's `output_config.effort` (`/effort`) and OpenAI's
+`reasoning_effort` / `reasoning.effort` are used directly (`minimal` → `low`). Order: `effort` in
+`kiro.json`, then the client's level, then the budget mapping above, then `default_effort`
+(`xhigh`) when the request carried no budget.
+
+Thinking off on Claude models that allow it sends `thinking.type: disabled`, and steps `xhigh`/`max`
+down to `high`, as kiro-cli does. Opus 5.5 and Sonnet 5.5 can't turn thinking off, so they always
+reason adaptively.
 
 ## Limitations
 

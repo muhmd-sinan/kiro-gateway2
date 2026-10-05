@@ -91,7 +91,7 @@ Three tables, kept separate on purpose:
   model id per session, and `resolveKiroModel` throws on unknown ids, so without these an old
   session would fail on every request.
 - **`server/model-alias.ts`**: the proxy's forgiving layer. It handles Claude Code's tier aliases
-  (`opus` → Opus 5.5, `sonnet` → Sonnet 5, `haiku` → GPT Luna), Anthropic date stamps, namespace
+  (`opus` → Opus 5.5, `sonnet` → Sonnet 5.5, `haiku` → GPT Luna), Anthropic date stamps, namespace
   prefixes, the `[1m]` suffix, `claude-*` names for GPT models (Claude Code's picker hides ids
   without "claude"), and `PROXY_REDIRECTS`, which win over an exact match. Unknown ids are matched
   by family keyword, then fall back to the default model.
@@ -172,18 +172,77 @@ the limit. So the setting caps how many requests are being started at once, whic
 ## Effort and thinking
 
 `REASONING_CAPABILITIES` in `plugin/effort.ts` is keyed on Kiro wire ids. Kiro checks
-`additionalModelRequestFields` against a per-model schema and returns 400 on any mismatch, so each
-model gets exactly the fields it accepts:
+`additionalModelRequestFields` against a per-model JSON schema and returns 400 on any mismatch, so
+each model gets exactly the fields it accepts. The table mirrors the schemas Kiro itself publishes
+(see "Discovering model schemas" below):
 
-| Family | Effort field | Thinking toggle |
-|---|---|---|
-| Claude | `output_config.effort` | `thinking.type`: `adaptive` / `disabled` |
-| Claude Opus 5.5 | `output_config.effort` | `adaptive` only (`disabled` returns 400) |
-| GPT 5.6 | `reasoning.effort` | none (`thinking` returns 400) |
+| Model | Effort field (levels, Kiro default) | `thinking.type` enum | Toggleable |
+|---|---|---|---|
+| Opus 5.5 | `output_config.effort` (low–max, `medium`) | `adaptive` | no |
+| Sonnet 5.5 | `output_config.effort` (low–max, `high`) | `adaptive`, `between_tools` | no |
+| Opus 5, Opus 4.8, Sonnet 5 | `output_config.effort` (low–max, `high`) | `adaptive`, `disabled` | yes |
+| Sonnet 4.6 | `output_config.effort` (no `xhigh`, `high`) | `adaptive`, `disabled` | yes |
+| GPT 5.6 | `reasoning.effort` (`none`, low–max, `high`) | field rejected | no |
 
 Models not in the table, including `auto`, get no reasoning fields. Thinking budgets map to effort
 levels in bands scaled to Kiro's real range (1024–128000). `xhigh` is clamped to `max` on models
 that don't accept it.
+
+Effort is chosen in this order: `effort` in `kiro.json`, then the level the client sent
+(`output_config.effort` from Claude Code, `reasoning_effort` / `reasoning.effort` from OpenAI-style
+clients, read by `requestedEffort`), then the thinking-budget mapping when the client sent a budget
+(`clientBudget`), and otherwise `default_effort` (`xhigh`).
+
+### Rules borrowed from kiro-cli
+
+`buildReasoningFields` follows what kiro-cli (2.23, `tui.js`: the `chat.modelDefaults` writer and
+the reconcile step behind `/model`) does:
+
+- **Toggleable** means the `thinking.type` enum contains `disabled`. Only those models get a
+  `thinking` field: `adaptive` when thinking, `disabled` when not. Opus 5.5 and Sonnet 5.5 get no
+  `thinking` field at all and reason adaptively, which is also why their `-thinking` companions
+  differ from the base entry only by effort variants.
+- **Effort and the toggle are independent**, so `thinking.type: disabled` plus an effort is sent
+  as-is, except that **`xhigh` and `max` require thinking**. kiro-cli turns thinking on when you
+  pick one, and steps effort down to the highest remaining level when you turn thinking off. Per
+  request we can't do the former, so a non-thinking request on a toggleable model steps xhigh/max
+  down (to `high` on every current model). Non-toggleable and GPT models keep the level.
+- **No effort, no field.** Kiro then applies the schema's default (`medium` on Opus 5.5, `high`
+  elsewhere). In practice `default_effort` means an effort-capable model always gets one.
+
+Not used yet: `thinking.display` (`summarized` / `omitted`), Sonnet 5.5's `between_tools` mode, the
+`max_tokens` field (1024–128000; 64000 on the 4.6 generation), and GPT's `reasoning.effort: none`.
+kiro-cli doesn't send the first two either.
+
+### Discovering model schemas
+
+kiro-cli doesn't hardcode any of this. It calls `ListAvailableModels`, which returns, per model,
+`additionalModelRequestFieldsSchema` (the JSON schema above), `rateMultiplier`, and `promptCaching`
+limits. To reproduce it:
+
+```
+GET https://q.{region}.amazonaws.com/ListAvailableModels?origin=KIRO_CLI&profileArn={arn}
+Authorization: Bearer {access token}
+```
+
+`origin` matters. `AI_EDITOR` (what `generateAssistantResponse` uses) returns 403 "Your subscription
+does not support this application" on IDC accounts; `KIRO_CLI` returns the list. The call is
+read-only and costs no credits, so it's the cheapest way to check a new model id, its effort levels
+and whether its thinking can be disabled before touching `MODEL_MAPPING` or `REASONING_CAPABILITIES`.
+The display rates in `MODEL_SPECS` come from `rateMultiplier`. The list doesn't include
+`claude-sonnet-4.6-1m`, though `generateAssistantResponse` accepts it.
+
+Other ways that have worked for confirming behavior:
+
+- **Reading kiro-cli's bundle.** `%LOCALAPPDATA%\Kiro-Cli\tui.js` is plain JavaScript; grep it for
+  `effortSchemaPath`, `thinking.type` or `thinkingToggleable`. The Rust binary (`kiro-cli.exe`) holds
+  the API shapes (`ListAvailableModelsInput`, `additionalModelRequestFieldsSchemaResponse`) and can
+  be searched with `grep -a`.
+- **Live smoke request.** `node scripts/smoke.mjs <wire-model-id>` (after `bun run build`) sends
+  one short prompt through `generateAssistantResponse`. It costs a few credits and refreshes the
+  IDE token cache in `~/.aws/sso/cache`.
+- **Error bodies.** A schema violation returns 400 with the failing enum, e.g. "does not have a
+  value in the enumeration ["adaptive"]", which pins down what a model accepts.
 
 ## Streaming
 

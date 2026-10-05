@@ -1,4 +1,4 @@
-import type { Effort } from './config/schema'
+import { EffortSchema, type Effort } from './config/schema'
 
 /**
  * Effort levels ordered from lowest to highest reasoning depth.
@@ -45,45 +45,51 @@ interface ReasoningCapability {
   effortPath: EffortSchemaPath
   /** Effort levels this model's schema accepts. */
   levels: readonly Effort[]
-  /** Whether the model honours an explicit `thinking.type` toggle. */
-  thinkingToggleable: boolean
   /**
-   * Whether `thinking.type` accepts `"disabled"`. Opus 5.5 doesn't: verified
-   * live, Kiro 400s with "does not have a value in the enumeration
-   * ["adaptive"]". On such models a non-thinking request omits the field and the
-   * model reasons adaptively, which is Kiro's default anyway.
+   * Whether thinking can be switched off, i.e. the model's `thinking.type` enum
+   * includes `"disabled"`. Same definition kiro-cli uses: its `/model` picker
+   * shows the thinking toggle only for these models, and only then writes
+   * `thinking.type` into the request. Opus 5.5 (`["adaptive"]`) and Sonnet 5.5
+   * (`["adaptive", "between_tools"]`) aren't toggleable; Kiro 400s on
+   * `"disabled"` there, and omitting the field leaves them reasoning adaptively.
    */
-  thinkingDisableable: boolean
+  thinkingToggleable: boolean
 }
+
+/**
+ * Levels kiro-cli treats as requiring thinking. Picking one turns thinking on;
+ * turning thinking off steps effort down to the highest level below them.
+ */
+const THINKING_ONLY_LEVELS: ReadonlySet<Effort> = new Set(['xhigh', 'max'])
 
 // Claude 4.6 rejects `xhigh` ("does not have..."); Opus 4.8 and the 5-series accept it.
 const FOUR_LEVELS: readonly Effort[] = ['low', 'medium', 'high', 'max']
 const FIVE_LEVELS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
-/** Claude: effort under `output_config`, plus a thinking toggle. */
+/** Claude: effort under `output_config`, plus `thinking.type` where it can be turned off. */
 const claude = (
   levels: readonly Effort[],
-  { thinkingDisableable = true }: { thinkingDisableable?: boolean } = {}
+  { thinkingToggleable = true }: { thinkingToggleable?: boolean } = {}
 ): ReasoningCapability => ({
   effortPath: 'output_config',
   levels,
-  thinkingToggleable: true,
-  thinkingDisableable
+  thinkingToggleable
 })
 
 /** GPT: effort under `reasoning`, and no thinking toggle. */
 const gpt = (): ReasoningCapability => ({
   effortPath: 'reasoning',
   levels: FIVE_LEVELS,
-  thinkingToggleable: false,
-  thinkingDisableable: false
+  thinkingToggleable: false
 })
 
 /**
  * Per-model reasoning schema, keyed on Kiro *wire* model ids (dotted form).
  *
- * Each model accepts exactly one effort path and 400s on the other — verified
- * live against generateAssistantResponse:
+ * Mirrors `additionalModelRequestFieldsSchema` from Kiro's ListAvailableModels
+ * (see ARCHITECTURE.md for how to fetch it). Each model accepts exactly one
+ * effort path and 400s on the other — verified live against
+ * generateAssistantResponse:
  *
  * - Claude accepts `output_config.effort` and `thinking.type`. It rejects
  *   `reasoning.effort`, including when sent alongside the path it does accept.
@@ -97,9 +103,10 @@ const REASONING_CAPABILITIES: Readonly<Record<string, ReasoningCapability>> = {
   'claude-sonnet-4.6': claude(FOUR_LEVELS),
   'claude-sonnet-4.6-1m': claude(FOUR_LEVELS),
   'claude-sonnet-5': claude(FIVE_LEVELS),
+  'claude-sonnet-5.5': claude(FIVE_LEVELS, { thinkingToggleable: false }),
   'claude-opus-4.8': claude(FIVE_LEVELS),
   'claude-opus-5': claude(FIVE_LEVELS),
-  'claude-opus-5.5': claude(FIVE_LEVELS, { thinkingDisableable: false }),
+  'claude-opus-5.5': claude(FIVE_LEVELS, { thinkingToggleable: false }),
 
   'gpt-5.6-luna': gpt(),
   'gpt-5.6-terra': gpt(),
@@ -193,14 +200,22 @@ export function getEffectiveEffort(
 /**
  * Build the `additionalModelRequestFields` payload for a request.
  *
- * This is the whole reasoning contract in one place, matching what kiro-cli
- * sends. Returns undefined when the model accepts no reasoning fields, so the
- * caller omits the key entirely — Kiro rejects the field outright on models like
- * MiniMax, and an empty object is not a safe stand-in.
+ * This is the whole reasoning contract in one place, following kiro-cli's rules
+ * (its `chat.modelDefaults` writer and the reconcile step behind `/model`):
  *
- * `thinking: false` emits `thinking.type = "disabled"`, which is the only
- * reliable way to suppress reasoning; omitting the field lets the model reason
- * adaptively. Effort and the toggle are independent, so both can appear.
+ * - `thinking.type` is sent only on toggleable models: `"adaptive"` when
+ *   thinking, `"disabled"` when not. Non-toggleable models get no thinking
+ *   field at all and reason adaptively.
+ * - Effort is independent of the toggle, so `disabled` plus an effort is valid,
+ *   except that xhigh/max need thinking. A non-thinking request on a toggleable
+ *   model steps them down to the highest remaining level, as kiro-cli does when
+ *   you switch thinking off.
+ * - No effort means no effort field, leaving Kiro's per-model default (medium on
+ *   Opus 5.5, high elsewhere).
+ *
+ * Returns undefined when the model accepts no reasoning fields, so the caller
+ * omits the key entirely — Kiro rejects the field outright on models like
+ * MiniMax, and an empty object is not a safe stand-in.
  */
 export function buildReasoningFields(
   kiroModel: string,
@@ -212,18 +227,52 @@ export function buildReasoningFields(
 
   const fields: Record<string, unknown> = {}
 
-  if (effort) {
-    const resolved = resolveEffort(kiroModel, effort)
-    if (resolved) fields[capability.effortPath] = { effort: resolved }
+  let resolved = effort ? resolveEffort(kiroModel, effort) : undefined
+  if (
+    capability.thinkingToggleable &&
+    !thinking &&
+    resolved &&
+    THINKING_ONLY_LEVELS.has(resolved)
+  ) {
+    resolved = capability.levels.filter((level) => !THINKING_ONLY_LEVELS.has(level)).at(-1)
   }
+  if (resolved) fields[capability.effortPath] = { effort: resolved }
 
   if (capability.thinkingToggleable) {
-    // Only the "off" case is stated explicitly. Kiro already defaults to
-    // adaptive, and sending it redundantly adds a field for no behaviour change.
-    if (!thinking && !effort) {
-      if (capability.thinkingDisableable) fields.thinking = { type: 'disabled' }
-    } else if (thinking) fields.thinking = { type: 'adaptive' }
+    fields.thinking = { type: thinking ? 'adaptive' : 'disabled' }
   }
 
   return Object.keys(fields).length > 0 ? fields : undefined
+}
+
+/**
+ * Read an effort level the client asked for directly.
+ *
+ * Claude Code sends `output_config.effort` (its `/effort` setting), OpenAI-style
+ * clients send `reasoning_effort` or `reasoning.effort`. Without this, those
+ * requests fell through to the budget mapping, and since they rarely carry a
+ * budget they all landed on the 20000-token default, i.e. `medium`.
+ *
+ * OpenAI's `minimal` becomes `low`. `none` and unknown values return undefined;
+ * `none` is already handled as "thinking off" by the caller.
+ */
+export function requestedEffort(body: any): Effort | undefined {
+  const raw = body?.output_config?.effort ?? body?.reasoning_effort ?? body?.reasoning?.effort
+  if (raw === 'minimal') return 'low'
+  const parsed = EffortSchema.safeParse(raw)
+  return parsed.success ? parsed.data : undefined
+}
+
+/**
+ * The thinking budget the client sent, if any, across the OpenCode, AI SDK and
+ * Anthropic request shapes. Undefined means "no budget", which lets the
+ * configured default effort apply instead of the budget map.
+ */
+export function clientBudget(body: any): number | undefined {
+  const budget =
+    body?.providerOptions?.thinkingConfig?.thinkingBudget ??
+    body?.thinkingConfig?.thinkingBudget ??
+    body?.thinkingConfig?.budget_tokens ??
+    body?.thinking?.budget_tokens
+  return typeof budget === 'number' && budget > 0 ? budget : undefined
 }

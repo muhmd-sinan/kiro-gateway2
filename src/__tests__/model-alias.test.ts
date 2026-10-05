@@ -11,7 +11,7 @@ describe('resolveModelId', () => {
   })
 
   test('maps Claude Code tier aliases to the newest model in each family', () => {
-    expect(resolveModelId('sonnet', DEFAULT).id).toBe('claude-sonnet-5')
+    expect(resolveModelId('sonnet', DEFAULT).id).toBe('claude-sonnet-5-5')
     expect(resolveModelId('opus', DEFAULT).id).toBe('claude-opus-5-5')
     // opusplan is what Claude Code sends for Opus in Plan Mode.
     expect(resolveModelId('opusplan', DEFAULT).id).toBe('claude-opus-5-5')
@@ -36,7 +36,7 @@ describe('resolveModelId', () => {
     // permanent and bricks the session.
     expect(resolveModelId('claude-opus-4-5', DEFAULT).id).toBe('claude-opus-5-5')
     expect(resolveModelId('claude-opus-4-7', DEFAULT).id).toBe('claude-opus-5-5')
-    expect(resolveModelId('claude-sonnet-4-5', DEFAULT).id).toBe('claude-sonnet-5')
+    expect(resolveModelId('claude-sonnet-4-5', DEFAULT).id).toBe('claude-sonnet-5-5')
   })
 
   test('routes dropped open-weight models to the cheapest advertised model', () => {
@@ -48,6 +48,8 @@ describe('resolveModelId', () => {
   test('reroutes claude-sonnet-5-1m, which Kiro rejects', () => {
     // Verified live: the 1M variant 400s while plain claude-sonnet-5 works.
     expect(resolveModelId('claude-sonnet-5-1m', DEFAULT).id).toBe('claude-sonnet-5')
+    expect(resolveModelId('claude-sonnet-5-5[1m]', DEFAULT).id).toBe('claude-sonnet-5-5')
+    expect(resolveModelId('claude-sonnet-5.5', DEFAULT).id).toBe('claude-sonnet-5-5')
   })
 
   test('keeps GPT tiers, which were explicitly retained', () => {

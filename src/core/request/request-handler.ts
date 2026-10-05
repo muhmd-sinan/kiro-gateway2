@@ -3,6 +3,7 @@ import type { AccountRepository } from '../../infrastructure/database/account-re
 import type { HistoryOptions } from '../../infrastructure/transformers/history-builder'
 import type { AccountManager } from '../../plugin/accounts'
 import type { KiroConfig } from '../../plugin/config'
+import { clientBudget, requestedEffort } from '../../plugin/effort'
 import { isPermanentError } from '../../plugin/health'
 import * as logger from '../../plugin/logger'
 import { transformToSdkRequest } from '../../plugin/request'
@@ -212,12 +213,7 @@ export class RequestHandler {
       // Anthropic Messages API shape, as sent by Claude Code.
       body?.thinking?.type === 'enabled' ||
       body?.thinking?.type === 'adaptive'
-    const budget =
-      body?.providerOptions?.thinkingConfig?.thinkingBudget ||
-      body?.thinkingConfig?.thinkingBudget ||
-      body?.thinkingConfig?.budget_tokens ||
-      body?.thinking?.budget_tokens ||
-      20000
+    const budget = clientBudget(body) ?? 20000
 
     let retry = 0
     let bearerRetried = false
@@ -401,7 +397,13 @@ export class RequestHandler {
       budget,
       showToast,
       {
-        effort: this.config.effort,
+        // kiro.json's `effort` wins so an operator can pin spend; then the level
+        // the client asked for; then its thinking budget (via the budget map);
+        // and only with none of those, `default_effort`.
+        effort:
+          this.config.effort ??
+          requestedEffort(body) ??
+          (clientBudget(body) === undefined ? this.config.default_effort : undefined),
         autoEffortMapping: this.config.auto_effort_mapping
       },
       conversationId,

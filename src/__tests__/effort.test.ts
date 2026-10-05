@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import {
   budgetToEffort,
   buildReasoningFields,
+  clientBudget,
   getEffectiveEffort,
+  requestedEffort,
   resolveEffort,
   supportsEffort,
   supportsThinkingToggle,
@@ -58,6 +60,7 @@ describe('effort module', () => {
       expect(supportsXHighEffort('claude-opus-4.8')).toBe(true)
       expect(supportsXHighEffort('claude-opus-5')).toBe(true)
       expect(supportsXHighEffort('claude-sonnet-5')).toBe(true)
+      expect(supportsXHighEffort('claude-sonnet-5.5')).toBe(true)
     })
 
     test('returns false for other models', () => {
@@ -149,12 +152,22 @@ describe('effort module', () => {
    * confirmed against the live generateAssistantResponse endpoint.
    */
   describe('buildReasoningFields', () => {
-    test('never sends thinking.type "disabled" to Opus 5.5', () => {
-      // Verified live: Opus 5.5's schema only accepts "adaptive" and 400s on
-      // "disabled", so a non-thinking request omits the field entirely.
-      expect(buildReasoningFields('claude-opus-5.5', false)).toBeUndefined()
-      expect(buildReasoningFields('claude-opus-5.5', true)).toEqual({
-        thinking: { type: 'adaptive' }
+    test('sends no thinking field to the 5.5 models, which cannot disable it', () => {
+      // Opus 5.5 accepts ["adaptive"], Sonnet 5.5 ["adaptive", "between_tools"];
+      // both 400 on "disabled". Like kiro-cli, send no thinking.type at all.
+      for (const model of ['claude-opus-5.5', 'claude-sonnet-5.5']) {
+        expect(buildReasoningFields(model, false)).toBeUndefined()
+        expect(buildReasoningFields(model, true)).toBeUndefined()
+        expect(buildReasoningFields(model, true, 'xhigh')).toEqual({
+          output_config: { effort: 'xhigh' }
+        })
+      }
+    })
+
+    test('keeps xhigh/max on non-toggleable models when thinking was not requested', () => {
+      // Their thinking can't be off, so there is nothing to step down for.
+      expect(buildReasoningFields('claude-opus-5.5', false, 'max')).toEqual({
+        output_config: { effort: 'max' }
       })
     })
 
@@ -186,11 +199,33 @@ describe('effort module', () => {
       })
     })
 
-    test('honours an explicit effort even when thinking was not requested', () => {
-      // An effort level is itself a request to reason, so it must not be paired
-      // with thinking.type=disabled.
-      const fields = buildReasoningFields('claude-opus-5', false, 'high')
-      expect(fields).toEqual({ output_config: { effort: 'high' } })
+    test('sends effort alongside thinking.type=disabled', () => {
+      // kiro-cli treats the two as independent and writes both.
+      expect(buildReasoningFields('claude-opus-5', false, 'high')).toEqual({
+        output_config: { effort: 'high' },
+        thinking: { type: 'disabled' }
+      })
+    })
+
+    test('steps xhigh/max down to high when thinking is off', () => {
+      // kiro-cli's rule: those levels require thinking.
+      for (const effort of ['xhigh', 'max'] as const) {
+        expect(buildReasoningFields('claude-opus-5', false, effort)).toEqual({
+          output_config: { effort: 'high' },
+          thinking: { type: 'disabled' }
+        })
+      }
+      // Sonnet 4.6 has no xhigh; max still steps down to high.
+      expect(buildReasoningFields('claude-sonnet-4.6', false, 'max')).toEqual({
+        output_config: { effort: 'high' },
+        thinking: { type: 'disabled' }
+      })
+    })
+
+    test('does not step GPT effort down, since GPT has no thinking toggle', () => {
+      expect(buildReasoningFields('gpt-5.6-sol', false, 'max')).toEqual({
+        reasoning: { effort: 'max' }
+      })
     })
 
     test('returns undefined for auto, so the key is omitted entirely', () => {
@@ -242,9 +277,42 @@ describe('effort module', () => {
       // additionalModelRequestFields: property 'thinking'".
       expect(supportsThinkingToggle('claude-opus-5')).toBe(true)
       expect(supportsThinkingToggle('claude-sonnet-4.6')).toBe(true)
+      expect(supportsThinkingToggle('claude-opus-5.5')).toBe(false)
+      expect(supportsThinkingToggle('claude-sonnet-5.5')).toBe(false)
       expect(supportsThinkingToggle('gpt-5.6-luna')).toBe(false)
       expect(supportsThinkingToggle('gpt-5.6-sol')).toBe(false)
       expect(supportsThinkingToggle('auto')).toBe(false)
+    })
+  })
+
+  describe('requestedEffort', () => {
+    test('reads Claude Code and OpenAI effort fields', () => {
+      expect(requestedEffort({ output_config: { effort: 'xhigh' } })).toBe('xhigh')
+      expect(requestedEffort({ reasoning_effort: 'high' })).toBe('high')
+      expect(requestedEffort({ reasoning: { effort: 'max' } })).toBe('max')
+    })
+
+    test('maps minimal to low and ignores none or junk', () => {
+      expect(requestedEffort({ reasoning_effort: 'minimal' })).toBe('low')
+      expect(requestedEffort({ reasoning_effort: 'none' })).toBeUndefined()
+      expect(requestedEffort({ output_config: { effort: 'turbo' } })).toBeUndefined()
+      expect(requestedEffort({})).toBeUndefined()
+      expect(requestedEffort(undefined)).toBeUndefined()
+    })
+  })
+
+  describe('clientBudget', () => {
+    test('reads every supported budget shape', () => {
+      expect(clientBudget({ thinking: { budget_tokens: 4096 } })).toBe(4096)
+      expect(clientBudget({ thinkingConfig: { thinkingBudget: 65536 } })).toBe(65536)
+      expect(clientBudget({ providerOptions: { thinkingConfig: { thinkingBudget: 1024 } } })).toBe(
+        1024
+      )
+    })
+
+    test('returns undefined when no budget was sent', () => {
+      expect(clientBudget({ thinking: { type: 'adaptive' } })).toBeUndefined()
+      expect(clientBudget({})).toBeUndefined()
     })
   })
 })

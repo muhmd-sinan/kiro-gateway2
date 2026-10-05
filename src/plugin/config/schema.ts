@@ -121,6 +121,13 @@ export const KiroConfigSchema = z.object({
    */
   auto_effort_mapping: z.boolean().default(true),
 
+  /**
+   * Effort used when neither `effort`, the client's own effort field, nor a
+   * thinking budget says otherwise. Without it, a request with no budget fell
+   * onto the 20000-token default and ran at `medium`.
+   */
+  default_effort: EffortSchema.default('xhigh'),
+
   // Expose Kiro's server-side web search as a `kiro_web_search` tool. Kiro runs
   // the search on its own infrastructure (billed as Kiro credits) and returns
   // structured results. Requires a Pro account (profileArn); on free Builder ID
@@ -148,5 +155,6 @@ export const DEFAULT_CONFIG: KiroConfig = {
   auto_sync_kiro_cli: true,
   enable_log_api_request: false,
   auto_effort_mapping: true,
+  default_effort: 'xhigh',
   web_search_enabled: true
 }

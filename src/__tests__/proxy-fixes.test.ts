@@ -11,7 +11,7 @@ import type { StreamEvent } from '../plugin/streaming/types.js'
 import { estimateInputTokens, startProxyServer } from '../server/http.js'
 import { withTimingLog } from '../server/runtime.js'
 
-const TIMING = { queueMs: 0, responseStartMs: 0 }
+const TIMING = { queueMs: 0, responseStartMs: 0, upstreamMs: 0 }
 const PNG = 'iVBORw0KGgo'.padEnd(4000, 'A')
 
 async function* streamOf(events: StreamEvent[]): AsyncGenerator<StreamEvent> {

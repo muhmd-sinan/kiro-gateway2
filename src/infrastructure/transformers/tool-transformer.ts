@@ -309,6 +309,22 @@ function sanitizeSchemaNode(
       // arbitrarily narrowing the tool to the first alternative.
       if (!hasUnrepresentableBranch && uniqueCandidates.length === 1) {
         result = mergeSchemas(uniqueCandidates[0]!, result)
+      } else if (
+        !hasUnrepresentableBranch &&
+        uniqueCandidates.length > 1 &&
+        uniqueCandidates.every((c) => c.type === 'object' || isRecord(c.properties))
+      ) {
+        // Object variants (`{oneOf: [{properties: {a}}, {properties: {b}}]}`) used to
+        // collapse to `properties: {}`, so the model could neither see nor fill a or b.
+        // Union the properties and drop the branches' `required`, since any one branch's
+        // required list is wrong for the others. The parent's own `required` still applies.
+        const union = uniqueCandidates.reduce(
+          (merged, c) => mergeSchemas(merged, { ...c, required: undefined }),
+          {} as JsonObject
+        )
+        delete union.required
+        result = mergeSchemas(union, result)
+        result.type = 'object'
       }
     }
 

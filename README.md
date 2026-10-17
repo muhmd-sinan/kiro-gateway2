@@ -234,8 +234,9 @@ reason adaptively.
   see it.
 - **Server-side `web_fetch` and code execution aren't available.** Claude Code's own `WebFetch`
   runs locally and still works.
-- **Limits per message:** 4 images, 5 documents, 4.5 MB per document. Anything over the limit is
-  noted in the message instead of failing the request.
+- **Limits per message:** 4 images (png, jpeg, gif, webp), 5 documents, 4.5 MB per document.
+  Anything over the limit or in another format is noted in the message instead of failing the
+  request.
 - **Background tasks use GPT 5.6 Luna.** Kiro has no Haiku.
 
 ## Logs and storage
@@ -253,11 +254,14 @@ In `~/.config/opencode/` (`%APPDATA%\opencode\` on Windows):
 A `Proxy timing` line looks like this:
 
 ```
-Proxy timing {"model":"claude-opus-5-5","queueMs":0,"responseStartMs":2176,"firstContentMs":56,"streamMs":56,"credits":0.0439,"outcome":"complete"}
+Proxy timing {"model":"claude-opus-5-5","queueMs":0,"responseStartMs":2176,"upstreamMs":2170,"gatewayMs":6,"firstContentMs":56,"streamMs":56,"credits":0.0439,"outcome":"complete"}
 ```
 
 `responseStartMs` is the wait before Kiro started responding, which is usually most of the
-latency.
+latency. It splits into `upstreamMs`, the successful call to Kiro (Kiro sends nothing until the
+model's first token, so this is the model's own time to first token), and `gatewayMs`, everything
+the proxy added before it: request prep, token refresh, and failed attempts with their backoff. A
+slow turn with a small `gatewayMs` is slow on Kiro's side.
 
 ## Troubleshooting
 

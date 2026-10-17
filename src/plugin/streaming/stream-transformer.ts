@@ -35,7 +35,6 @@ export async function* transformKiroStream(
   const decoder = new TextDecoder()
 
   let rawBuffer = ''
-  let totalContent = ''
   let textOnlyContent = ''
   let outputTokens = 0
   let inputTokens = 0
@@ -58,7 +57,6 @@ export async function* transformKiroStream(
         if (event.type === 'contextUsage' && event.data.contextUsagePercentage) {
           contextUsagePercentage = event.data.contextUsagePercentage
         } else if (event.type === 'content' && event.data) {
-          totalContent += event.data
           textOnlyContent += event.data
 
           if (!thinkingRequested) {
@@ -149,13 +147,6 @@ export async function* transformKiroStream(
           }
         } else if (event.type === 'toolUse') {
           const tc = event.data
-          if (tc.name) {
-            totalContent += tc.name
-          }
-          if (tc.input) {
-            totalContent += tc.input
-          }
-
           if (tc.name && tc.toolUseId) {
             if (currentToolCall && currentToolCall.toolUseId === tc.toolUseId) {
               currentToolCall.input += tc.input || ''
@@ -176,9 +167,6 @@ export async function* transformKiroStream(
             }
           }
         } else if (event.type === 'toolUseInput') {
-          if (event.data.input) {
-            totalContent += event.data.input
-          }
           if (currentToolCall) {
             currentToolCall.input += event.data.input || ''
           }
@@ -225,7 +213,7 @@ export async function* transformKiroStream(
       if (_c !== null) yield _c
     }
 
-    const bracketToolCalls = parseBracketToolCalls(totalContent)
+    const bracketToolCalls = parseBracketToolCalls(textOnlyContent)
     if (bracketToolCalls.length > 0) {
       for (const btc of bracketToolCalls) {
         toolCalls.push({

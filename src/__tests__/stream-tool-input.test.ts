@@ -106,6 +106,87 @@ describe('incremental tool_use streaming', () => {
     )
   })
 
+  test('keeps every reasoning segment when Kiro interleaves it with text and tools', async () => {
+    // Live shape: Kiro reasons again after text and between tool calls. This
+    // used to write the second segment into the already-stopped first thinking
+    // block and open text over a still-open thinking block, so Claude Code
+    // showed the reasoning while streaming and then dropped it.
+    const events = await run([
+      { reasoningContentEvent: { text: 'think A' } },
+      { assistantResponseEvent: { content: 'text one, long enough to flush' } },
+      { reasoningContentEvent: { text: 'think B' } },
+      { toolUseEvent: { toolUseId: 'a', name: 'Read', input: '{"p":1}' } },
+      { toolUseEvent: { toolUseId: 'a', stop: true } },
+      { reasoningContentEvent: { text: 'think C' } },
+      { toolUseEvent: { toolUseId: 'b', name: 'Read', input: '{"p":2}' } },
+      { toolUseEvent: { toolUseId: 'b', stop: true } },
+      { reasoningContentEvent: { text: 'think D' } },
+      { assistantResponseEvent: { content: 'final text, long enough too' } }
+    ])
+    assertWellFormed(events)
+
+    const blocks = events
+      .filter((e) => e.type === 'content_block_start')
+      .map((e) => e.content_block.type)
+    expect(blocks).toEqual([
+      'thinking',
+      'text',
+      'thinking',
+      'tool_use',
+      'thinking',
+      'tool_use',
+      'thinking',
+      'text'
+    ])
+    const thinking = events
+      .filter((e) => e.type === 'content_block_delta' && e.delta.type === 'thinking_delta')
+      .map((e) => e.delta.thinking)
+    expect(thinking).toEqual(['think A', 'think B', 'think C', 'think D'])
+  })
+
+  test('flushes held-back text before reasoning that follows it', async () => {
+    // The last few chars of text are held for <thinking> tag detection; they
+    // belong to the text before the reasoning, not after it.
+    const events = await run([
+      { reasoningContentEvent: { text: 'first' } },
+      { assistantResponseEvent: { content: 'abcdefghijklmnop' } },
+      { reasoningContentEvent: { text: 'second' } }
+    ])
+    assertWellFormed(events)
+    const textBlock = events.find(
+      (e) => e.type === 'content_block_start' && e.content_block.type === 'text'
+    )!.index
+    const text = events
+      .filter((e) => e.type === 'content_block_delta' && e.index === textBlock)
+      .map((e) => e.delta.text)
+      .join('')
+    expect(text).toBe('abcdefghijklmnop')
+  })
+
+  test('a bracket-call mention inside tool input is not turned into a second call', async () => {
+    // Writing docs or tests about the bracket fallback put the literal syntax in
+    // a native call's input; the end-of-stream scan used to read tool input too
+    // and emitted a phantom Read the model never made.
+    const content = 'Old models wrote [Called Read with args: {"path":"x"}] as text.'
+    const events = await run([frag(JSON.stringify({ path: 'notes.md', content }), { stop: true })])
+    assertWellFormed(events)
+    const tools = events
+      .filter((e) => e.type === 'content_block_start' && e.content_block.type === 'tool_use')
+      .map((e) => e.content_block.name)
+    expect(tools).toEqual(['Write'])
+  })
+
+  test('still recovers a bracket call written in assistant text', async () => {
+    const events = await run([
+      { assistantResponseEvent: { content: 'Reading. [Called Read with args: {"path":"x"}]' } }
+    ])
+    assertWellFormed(events)
+    const tools = events
+      .filter((e) => e.type === 'content_block_start' && e.content_block.type === 'tool_use')
+      .map((e) => e.content_block.name)
+    expect(tools).toEqual(['Read'])
+  })
+
   test('streams consecutive calls as separate blocks', async () => {
     const events = await run([
       { toolUseEvent: { toolUseId: 'a', name: 'Read', input: '{"p":1}' } },

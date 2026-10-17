@@ -1,5 +1,6 @@
 import type { AccountRepository } from '../../infrastructure/database/account-repository'
 import type { AccountManager } from '../../plugin/accounts'
+import { KiroRateLimitError } from '../../plugin/errors'
 import type { ManagedAccount } from '../../plugin/types'
 import { summarizeUsage } from '../../plugin/usage'
 
@@ -48,6 +49,15 @@ export class AccountSelector {
         }
         await this.sleep(wait)
         return null
+      }
+      // A long rate limit is still a rate limit. It used to fall through to
+      // "reauth required", which opened a sign-in flow for accounts whose
+      // credentials were fine and only needed time.
+      if (wait > 0) {
+        throw new KiroRateLimitError(
+          `All accounts are rate-limited. Retry in ${Math.ceil(wait / 1000)}s.`,
+          wait
+        )
       }
       throw new Error('All accounts are unhealthy or rate-limited: reauth required')
     }

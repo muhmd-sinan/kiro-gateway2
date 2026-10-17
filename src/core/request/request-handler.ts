@@ -26,6 +26,13 @@ export interface RequestTiming {
   queueMs: number
   /** Slot acquired → Kiro's response started (account pick, refresh, retries, TTFB). */
   responseStartMs: number
+  /**
+   * The successful `client.send` alone: upload plus Kiro's time to first byte.
+   * Kiro holds its headers until the model's first token, so this is the
+   * model's TTFT as seen from here; `responseStartMs - upstreamMs` is what the
+   * gateway added (prep, refresh, failed attempts and their backoff).
+   */
+  upstreamMs: number
 }
 
 const KIRO_API_PATTERN = /^(https?:\/\/)?q\.[a-z0-9-]+\.amazonaws\.com/
@@ -193,9 +200,14 @@ export class RequestHandler {
       startedAt = Date.now()
       return this.executeWithRetry(body, model, conversationId, showToast, historyOptions)
     })
+    const { upstreamMs, ...rest } = result
     return {
-      ...result,
-      timing: { queueMs: startedAt - queuedAt, responseStartMs: Date.now() - startedAt }
+      ...rest,
+      timing: {
+        queueMs: startedAt - queuedAt,
+        responseStartMs: Date.now() - startedAt,
+        upstreamMs
+      }
     }
   }
 
@@ -205,7 +217,7 @@ export class RequestHandler {
     conversationId: string,
     showToast: ToastFunction,
     historyOptions?: HistoryOptions
-  ): Promise<{ sdkResponse: any; sdkPrep: SdkPreparedRequest }> {
+  ): Promise<{ sdkResponse: any; sdkPrep: SdkPreparedRequest; upstreamMs: number }> {
     const think =
       model.endsWith('-thinking') ||
       !!body?.providerOptions?.thinkingConfig ||
@@ -254,14 +266,22 @@ export class RequestHandler {
       }
 
       consecutiveNullAccounts = 0
-      const auth = this.accountManager.toAuthDetails(acc)
 
-      const tokenResult = await this.tokenRefresher.refreshIfNeeded(acc, auth, showToast)
-      if (tokenResult.shouldContinue) {
-        acc = tokenResult.account
-        await this.sleep(500)
-        continue
-      }
+      const tokenResult = await this.tokenRefresher.refreshIfNeeded(
+        acc,
+        this.accountManager.toAuthDetails(acc),
+        showToast
+      )
+      // No sleep here: shouldContinue means credentials were recovered (retry at
+      // once) or the account was marked unhealthy (selection skips it next time).
+      // The fixed 500ms wait added latency to both, and retryStrategy already
+      // bounds the loop.
+      if (tokenResult.shouldContinue) continue
+      // Built after the refresh, not before: refreshIfNeeded writes the new token
+      // onto the account, and an auth captured earlier still carried the old one.
+      // Once that token had actually expired (laptop asleep past the hour), every
+      // first request 403'd and paid for a forced refresh and a second send.
+      const auth = this.accountManager.toAuthDetails(tokenResult.account)
 
       const sdkPrep = this.prepareSdkRequest(
         body,
@@ -285,7 +305,9 @@ export class RequestHandler {
           profileArn: sdkPrep.profileArn
         })
 
+        const sentAt = Date.now()
         const sdkResponse = await client.send(command)
+        const upstreamMs = Date.now() - sentAt
 
         if (apiTimestamp) {
           this.logSdkResponse(sdkPrep, apiTimestamp)
@@ -294,7 +316,7 @@ export class RequestHandler {
         this.handleSuccessfulRequest(acc)
         this.usageTracker.syncUsage(acc, auth)
 
-        return { sdkResponse, sdkPrep }
+        return { sdkResponse, sdkPrep, upstreamMs }
       } catch (e: any) {
         const httpStatus = e?.$metadata?.httpStatusCode
 
@@ -316,13 +338,15 @@ export class RequestHandler {
         }
 
         if (httpStatus) {
+          // Carry Kiro's retry-after through. The mock used to have only
+          // Content-Type, so the error handler never saw the header and every
+          // 429 fell back to its default wait.
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+          const retryAfter = e?.$response?.headers?.['retry-after']
+          if (typeof retryAfter === 'string' && retryAfter) headers['retry-after'] = retryAfter
           const mockResponse = new Response(
             JSON.stringify({ message: e.message, __type: e.name }),
-            {
-              status: httpStatus,
-              statusText: e.name || 'Error',
-              headers: { 'Content-Type': 'application/json' }
-            }
+            { status: httpStatus, statusText: e.name || 'Error', headers }
           )
 
           const errorResult = await this.errorHandler.handle(

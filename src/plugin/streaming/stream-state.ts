@@ -1,34 +1,38 @@
 import { StreamEvent, StreamState } from './types.js'
 
+/**
+ * Open a thinking/text block unless one of that type is already open.
+ *
+ * Anthropic blocks are strictly sequential: a block is final once it gets
+ * content_block_stop, and only one block is open at a time. Kiro breaks the
+ * old "thinking, then text" assumption: within one turn it interleaves native
+ * reasoning with text and tool calls. So a thinking block that was already
+ * stopped got more deltas, and a text block opened while thinking was still
+ * open. Claude Code renders those deltas live and then drops them when it
+ * finalizes the block, which is why reasoning (and the calls around it)
+ * showed briefly and then disappeared. Opening a block here therefore closes
+ * the other type first, and a stopped block is never reused.
+ */
 export function ensureBlockStart(
   blockType: 'thinking' | 'text',
   streamState: StreamState
 ): StreamEvent[] {
-  if (blockType === 'thinking') {
-    if (streamState.thinkingBlockIndex != null) return []
-    const idx = streamState.nextBlockIndex++
-    streamState.thinkingBlockIndex = idx
-    return [
-      {
-        type: 'content_block_start',
-        index: idx,
-        content_block: { type: 'thinking', thinking: '' }
-      }
-    ]
-  }
-  if (blockType === 'text') {
-    if (streamState.textBlockIndex != null) return []
-    const idx = streamState.nextBlockIndex++
-    streamState.textBlockIndex = idx
-    return [
-      {
-        type: 'content_block_start',
-        index: idx,
-        content_block: { type: 'text', text: '' }
-      }
-    ]
-  }
-  return []
+  const key = blockType === 'thinking' ? 'thinkingBlockIndex' : 'textBlockIndex'
+  const other = blockType === 'thinking' ? 'textBlockIndex' : 'thinkingBlockIndex'
+  const current = streamState[key]
+  if (current != null && !streamState.stoppedBlocks.has(current)) return []
+
+  const events = stopBlock(streamState[other], streamState)
+  streamState[other] = null
+  const idx = streamState.nextBlockIndex++
+  streamState[key] = idx
+  events.push({
+    type: 'content_block_start',
+    index: idx,
+    content_block:
+      blockType === 'thinking' ? { type: 'thinking', thinking: '' } : { type: 'text', text: '' }
+  })
+  return events
 }
 
 export function stopBlock(index: number | null, streamState: StreamState): StreamEvent[] {

@@ -161,7 +161,11 @@ the limit. So the setting caps how many requests are being started at once, whic
   and restored on the way back.
 - **Tool schemas** are reduced to the subset of JSON Schema Kiro accepts: local `$ref`s resolved,
   `allOf` merged, nullable unions flattened.
-- **Images** become `images` (at most 4 per message). **Documents** (`plugin/document-handler.ts`)
+- **Images** (`plugin/image-handler.ts`) become `images` (at most 4 per message), including ones
+  nested inside a `tool_result` (screenshots, Claude Code's Read on an image file). Kiro's tool
+  result only carries text/JSON, so those images go on the same `userInputMessage` as the tool
+  result. `image/jpg` is sent as `jpeg`; formats outside png/jpeg/gif/webp are omitted with a note,
+  since history would replay a rejected image every turn. **Documents** (`plugin/document-handler.ts`)
   become `documents`, including PDFs nested inside a `tool_result`, which is how Claude Code's Read
   tool returns them, and OpenAI `file` parts (`file_data` data URIs), which is how OpenCode's
   `@ai-sdk/openai-compatible` sends a PDF. Plain-text documents are pasted in as text. Only the newest
@@ -258,10 +262,16 @@ Other ways that have worked for confirming behavior:
   once at the end. The plugin's response stream implements `cancel()`, so an aborted OpenCode turn
   stops draining Kiro the same way a proxy client disconnect does.
 - **Block order**: only one block is open at a time. Opening a tool block closes text and
-  thinking first, and text after a tool call opens a new block. Every block gets exactly one
-  `content_block_stop`; Claude Code stalls on a block that never closes. Tests check this order.
-- **Bracket-style calls** (`[Called X with args: {...}]`) found in text are turned into real tool
-  calls. A quick substring check skips the regex when none are present.
+  thinking first, and text after a tool call opens a new block. Kiro also interleaves native
+  reasoning with text and tool calls within one turn, so opening a thinking block closes text
+  (and vice versa), and a stopped block is never written to again. Without that, later reasoning
+  went into an already-stopped block and Claude Code showed it while streaming, then dropped it.
+  Every block gets exactly one `content_block_stop`; Claude Code stalls on a block that never
+  closes. Tests check this order.
+- **Bracket-style calls** (`[Called X with args: {...}]`) found in assistant text are turned into
+  real tool calls. Only text is scanned, never native tool input: a Write whose content mentioned
+  the syntax used to produce a phantom second call. A quick substring check skips the regex when
+  none are present.
 - **Usage**: output tokens are estimated from text, reasoning, and tool input. Input tokens come
   from Kiro's context-usage percentage minus output. Credits from `meteringEvent` travel on
   `message_delta.metering` for logging only; no serializer sends them to a client.
@@ -310,8 +320,9 @@ The OpenCode plugin exposes the same search as its own `kiro_web_search` tool.
 
 `plugin/logger.ts` buffers lines and writes them every 250 ms (errors are written immediately), so
 disk writes don't block streaming. Each upstream call logs one `Proxy timing` line: time waiting
-for a slot, time until Kiro started responding, time to first content, total stream time, credits,
-and outcome (`complete` / `error` / `aborted`). `enable_log_api_request` also writes every request
+for a slot, time until Kiro started responding (split into `upstreamMs`, the successful send, and
+`gatewayMs`, everything before it), time to first content, total stream time, credits, and outcome
+(`complete` / `error` / `aborted`). `enable_log_api_request` also writes every request
 and response as JSON files, with binary data base64-encoded.
 
 ## Build

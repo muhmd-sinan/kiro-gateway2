@@ -14,6 +14,29 @@ interface TokenRefresherConfig {
   account_selection_strategy: 'sticky' | 'round-robin' | 'lowest-usage'
 }
 
+type RefreshResult = { account: ManagedAccount; shouldContinue: boolean }
+
+/**
+ * In-flight refreshes, keyed per account.
+ *
+ * Up to max_concurrent_requests callers can find the same expired token at
+ * once, and each used to call refreshAccessToken itself. IDC and social logins
+ * rotate the refresh token, so every call after the first presented a token the
+ * first had already spent, got invalid_grant, and handleRefreshError marked the
+ * just-refreshed account unhealthy. Concurrent callers now share one refresh.
+ * Static because the plugin and proxy can each construct a TokenRefresher over
+ * the same accounts.
+ */
+const inFlight = new Map<string, Promise<unknown>>()
+
+function singleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const pending = inFlight.get(key)
+  if (pending) return pending as Promise<T>
+  const promise = run().finally(() => inFlight.delete(key))
+  inFlight.set(key, promise)
+  return promise
+}
+
 export class TokenRefresher {
   constructor(
     private config: TokenRefresherConfig,
@@ -26,28 +49,55 @@ export class TokenRefresher {
     account: ManagedAccount,
     auth: KiroAuthDetails,
     showToast: ToastFunction
-  ): Promise<{ account: ManagedAccount; shouldContinue: boolean }> {
+  ): Promise<RefreshResult> {
     if (!accessTokenExpired(auth, this.config.token_expiry_buffer_ms)) {
       return { account, shouldContinue: false }
     }
+    return singleFlight(`refresh:${account.id}`, () => this.refresh(account, auth, showToast))
+  }
 
+  private async refresh(
+    account: ManagedAccount,
+    auth: KiroAuthDetails,
+    showToast: ToastFunction
+  ): Promise<RefreshResult> {
+    let newAuth: KiroAuthDetails
     try {
-      const newAuth = await refreshAccessToken(auth)
-      this.accountManager.updateFromAuth(account, newAuth)
-      // Persist only the updated account instead of all accounts — avoids
-      // invalidating the whole AccountCache on every token refresh.
-      await this.repository.save(account)
-      const { writeToKiroCli } = await import('../../plugin/sync/kiro-cli.js')
-      const { writeToKiroIde } = await import('../../plugin/sync/kiro-ide.js')
-      await writeToKiroCli(account)
-      writeToKiroIde(account)
-      return { account, shouldContinue: false }
+      newAuth = await refreshAccessToken(auth)
     } catch (e: any) {
       return await this.handleRefreshError(e, account, showToast)
     }
+
+    // updateFromAuth also writes the token back to kiro-cli (fire-and-forget).
+    // This used to write it a second time, awaited, on the request path: a
+    // synchronous libsql write that can wait out kiro-cli's lock and stall every
+    // open stream meanwhile.
+    this.accountManager.updateFromAuth(account, newAuth)
+
+    // The new token is in memory and valid from here on. A failed save is a
+    // storage problem, not a refresh failure: routing it to handleRefreshError
+    // re-synced and could mark this healthy account unhealthy.
+    try {
+      // Only the updated account, so the whole AccountCache isn't invalidated.
+      await this.repository.save(account)
+      const { writeToKiroIde } = await import('../../plugin/sync/kiro-ide.js')
+      writeToKiroIde(account)
+    } catch (e) {
+      logger.warn('Token refreshed but persisting it failed', {
+        email: account.email,
+        message: e instanceof Error ? e.message : String(e)
+      })
+    }
+    return { account, shouldContinue: false }
   }
 
-  async forceRefresh(account: ManagedAccount, auth: KiroAuthDetails): Promise<void> {
+  forceRefresh(account: ManagedAccount, auth: KiroAuthDetails): Promise<void> {
+    // Several requests can 403 on the same stale bearer at once; same rotation
+    // hazard as refreshIfNeeded.
+    return singleFlight(`force:${account.id}`, () => this.doForceRefresh(account, auth))
+  }
+
+  private async doForceRefresh(account: ManagedAccount, auth: KiroAuthDetails): Promise<void> {
     if (this.config.auto_sync_kiro_cli) {
       await this.syncFromKiroCli()
     }

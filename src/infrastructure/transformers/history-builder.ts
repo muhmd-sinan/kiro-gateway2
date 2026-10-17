@@ -3,7 +3,8 @@ import { attachDocuments, extractDocuments, hasDocuments } from '../../plugin/do
 import {
   convertImagesToKiroFormat,
   extractAllImages,
-  extractTextFromParts
+  extractTextFromParts,
+  imageOnlyToolResultText
 } from '../../plugin/image-handler.js'
 import type { CodeWhispererMessage } from '../../plugin/types'
 import { getContentText, parseToolArguments } from './message-transformer.js'
@@ -167,7 +168,7 @@ export function buildHistory(
         for (const p of m.content) {
           if (p.type === 'tool_result') {
             trs.push({
-              content: [{ text: getContentText(p.content || p) }],
+              content: [{ text: getContentText(p.content || p) || imageOnlyToolResultText(p) }],
               status: toolResultStatus(p),
               toolUseId: p.tool_use_id
             })
@@ -184,7 +185,7 @@ export function buildHistory(
             const { images, omitted } = convertImagesToKiroFormat(unifiedImages)
             uim.images = images
             if (omitted > 0) {
-              uim.content += `\n\n[${omitted} image(s) omitted due to API limits]`
+              uim.content += `\n\n[${omitted} image(s) omitted: unsupported format or over the size/count limit]`
             }
           }
         }
@@ -278,7 +279,21 @@ export function buildHistory(
       }
     }
   }
-  return collapseAgenticLoops(history, options.preserveLoopText)
+  history = collapseAgenticLoops(history, options.preserveLoopText)
+  // Kiro history must open with a user turn. A client that trims or compacts
+  // old messages can leave an assistant reply first; injectSystemPrompt then
+  // attached the system prompt to a later user turn, after that reply. A
+  // placeholder keeps the assistant text (dropping it would lose context).
+  if (history[0]?.assistantResponseMessage) {
+    history.unshift({
+      userInputMessage: {
+        content: '[system: earlier conversation omitted]',
+        modelId: resolved,
+        origin: KIRO_CONSTANTS.ORIGIN_AI_EDITOR
+      }
+    })
+  }
+  return history
 }
 
 export function injectSystemPrompt(

@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer'
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -119,7 +120,10 @@ const writeApiLog = (
     const filename = `${prefix}${timestamp}_${type}.json`
     const path = join(dir, filename)
     const content = JSON.stringify(data, binaryToBase64Replacer, 2)
-    writeFileSync(path, content)
+    // Async: these run before client.send, and a request body averages ~130 KB
+    // (up to ~2 MB with images), so a synchronous write delayed every logged
+    // request's upstream call and stalled other open streams meanwhile.
+    writeFile(path, content).catch(() => {})
   } catch (e) {}
 }
 

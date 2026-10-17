@@ -80,7 +80,6 @@ export async function* transformSdkStreamEvents(
   // carry reasoning inline in the assistant text.
   let sawNativeReasoning = false
 
-  let totalContent = ''
   let textOnlyContent = ''
   // Native reasoning text, kept separately from textOnlyContent: it never reaches
   // the assistant text buffer but is still billed as output.
@@ -108,14 +107,17 @@ export async function* transformSdkStreamEvents(
     yield* stopBlock(index, streamState)
   }
 
+  // Text held back for tag detection belongs before whatever arrives next.
+  function* flushHeldText(): Generator<StreamEvent> {
+    if (!streamState.buffer) return
+    const pending = streamState.buffer
+    streamState.buffer = ''
+    if (streamState.inThinking) yield* createThinkingDeltaEvents(pending, streamState)
+    else yield* createTextDeltaEvents(pending, streamState)
+  }
+
   function* closeTextAndThinking(): Generator<StreamEvent> {
-    // Text held back for tag detection belongs before the tool call.
-    if (streamState.buffer) {
-      const pending = streamState.buffer
-      streamState.buffer = ''
-      if (streamState.inThinking) yield* createThinkingDeltaEvents(pending, streamState)
-      else yield* createTextDeltaEvents(pending, streamState)
-    }
+    yield* flushHeldText()
     yield* stopBlock(streamState.thinkingBlockIndex, streamState)
     yield* stopBlock(streamState.textBlockIndex, streamState)
     // Cleared so later text or reasoning opens a new block rather than writing
@@ -153,13 +155,15 @@ export async function* transformSdkStreamEvents(
       const reasoning = event.reasoningContentEvent.text
       if (typeof reasoning === 'string' && reasoning.length > 0) {
         yield* closeOpenTool()
+        // Kiro can reason again after text in the same turn; the held-back tail
+        // of that text must land before the new thinking block, not after it.
+        yield* flushHeldText()
         sawNativeReasoning = true
         reasoningContent += reasoning
         yield* createThinkingDeltaEvents(reasoning, streamState)
       }
     } else if (event.assistantResponseEvent?.content) {
       const text = event.assistantResponseEvent.content
-      totalContent += text
       textOnlyContent += text
 
       yield* closeOpenTool()
@@ -245,8 +249,6 @@ export async function* transformSdkStreamEvents(
       yield* deltaEvents
     } else if (event.toolUseEvent) {
       const tc = event.toolUseEvent
-      if (tc.name) totalContent += tc.name
-      if (tc.input) totalContent += tc.input
 
       const toolUseId = tc.toolUseId
       if (typeof toolUseId === 'string' && toolUseId.length > 0) {
@@ -342,7 +344,11 @@ export async function* transformSdkStreamEvents(
   yield* stopBlock(streamState.thinkingBlockIndex, streamState)
   yield* stopBlock(streamState.textBlockIndex, streamState)
 
-  const bracketToolCalls = parseBracketToolCalls(totalContent)
+  // Assistant text only. This used to scan native tool-call input too, so a
+  // Write whose file content mentioned `[Called Read with args: {...}]` (docs,
+  // tests, this very parser) produced a second, phantom Read call the model
+  // never made. Bracket calls are a text-only fallback by definition.
+  const bracketToolCalls = parseBracketToolCalls(textOnlyContent)
   if (bracketToolCalls.length > 0) {
     for (const btc of bracketToolCalls) {
       toolCalls.push({

@@ -135,6 +135,32 @@ describe('RequestHandler SDK error recovery', () => {
     expect(apiResponseLogCalls).toBe(2)
   })
 
+  test('sends the token refreshIfNeeded just wrote, not the one captured before it', async () => {
+    // Expired token in hand: refreshIfNeeded writes a fresh one onto the account.
+    // The request used to go out with the stale copy, 403, and pay for a forced
+    // refresh plus a second send.
+    sdkErrorMessage = 'Input is too long for this model'
+    sdkErrorName = 'ValidationException'
+    sdkHttpStatus = 400
+    const { handler, getForceRefreshCalls } = createHarness()
+    handler.tokenRefresher.refreshIfNeeded = async (selected: any) => {
+      selected.accessToken = 'fresh-access-token'
+      return { account: selected, shouldContinue: false }
+    }
+    const sentTokens: string[] = []
+    const prepare = handler.prepareSdkRequest
+    handler.prepareSdkRequest = (...args: any[]) => {
+      sentTokens.push(args[2].access)
+      return prepare(...args)
+    }
+
+    await request(handler)
+
+    expect(sentTokens).toEqual(['fresh-access-token'])
+    expect(sendCalls).toBe(1)
+    expect(getForceRefreshCalls()).toBe(0)
+  })
+
   test('returns a context-length response for SDK input overflow', async () => {
     sdkErrorMessage = 'Input is too long for this model'
     sdkErrorName = 'ValidationException'

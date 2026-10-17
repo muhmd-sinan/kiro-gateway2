@@ -25,7 +25,8 @@ import { buildReasoningFields, getEffectiveEffort } from './effort.js'
 import {
   convertImagesToKiroFormat,
   extractAllImages,
-  extractTextFromParts
+  extractTextFromParts,
+  imageOnlyToolResultText
 } from './image-handler.js'
 import { resolveKiroModel } from './models.js'
 import type {
@@ -200,7 +201,7 @@ function buildCodeWhispererRequest(
       for (const p of curMsg.content) {
         if (p.type === 'tool_result') {
           curTrs.push({
-            content: [{ text: getContentText(p.content || p) }],
+            content: [{ text: getContentText(p.content || p) || imageOnlyToolResultText(p) }],
             status: toolResultStatus(p),
             toolUseId: p.tool_use_id
           })
@@ -212,7 +213,7 @@ function buildCodeWhispererRequest(
         const { images, omitted } = convertImagesToKiroFormat(unifiedImages)
         curImgs.push(...images)
         if (omitted > 0) {
-          curContent += `\n\n[${omitted} image(s) omitted due to API limits]`
+          curContent += `\n\n[${omitted} image(s) omitted: unsupported format or over the size/count limit]`
         }
       }
 

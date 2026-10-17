@@ -256,12 +256,32 @@ export async function syncFromKiroCli() {
   }
 }
 
-export async function writeToKiroCli(acc: any) {
+/**
+ * Bounded lock wait for the token write-back.
+ *
+ * This libsql binding is synchronous, so the old 5s busy_timeout blocked the
+ * event loop — and with it every open stream — for up to 5s whenever kiro-cli
+ * or the IDE held its database. A short wait plus a deferred retry still gets a
+ * rotated refresh token into kiro-cli (which would otherwise fail its own next
+ * refresh) without that stall.
+ */
+const WRITE_BACK_BUSY_MS = 250
+const WRITE_BACK_RETRIES = 3
+const WRITE_BACK_RETRY_DELAY_MS = 2000
+
+function isBusyError(e: unknown): boolean {
+  const code = (e as any)?.code
+  const msg = e instanceof Error ? e.message : String(e)
+  return code === 'SQLITE_BUSY' || /SQLITE_BUSY|database is locked/i.test(msg)
+}
+
+export async function writeToKiroCli(acc: any, attempt = 0): Promise<void> {
   const dbPath = getCliDbPath()
   if (!existsSync(dbPath)) return
+  let cliDb: InstanceType<typeof Database> | undefined
   try {
-    const cliDb = new Database(dbPath)
-    cliDb.pragma('busy_timeout = 5000')
+    cliDb = new Database(dbPath)
+    cliDb.pragma(`busy_timeout = ${WRITE_BACK_BUSY_MS}`)
     const rows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
     const targetKey = acc.authMethod === 'idc' ? 'kirocli:odic:token' : 'kirocli:social:token'
     const row = rows.find((r) => r.key === targetKey || r.key.endsWith(targetKey))
@@ -272,8 +292,18 @@ export async function writeToKiroCli(acc: any) {
       data.expires_at = new Date(acc.expiresAt).toISOString()
       cliDb.prepare('UPDATE auth_kv SET value = ? WHERE key = ?').run(JSON.stringify(data), row.key)
     }
-    cliDb.close()
   } catch (e) {
+    if (isBusyError(e) && attempt < WRITE_BACK_RETRIES) {
+      // acc is the live account object, so a later retry writes whatever token
+      // is current by then rather than a stale snapshot.
+      setTimeout(() => void writeToKiroCli(acc, attempt + 1), WRITE_BACK_RETRY_DELAY_MS).unref?.()
+      return
+    }
     logger.warn('Write back failed', e)
+  } finally {
+    // Previously skipped when the UPDATE threw, leaking the handle.
+    try {
+      cliDb?.close()
+    } catch {}
   }
 }

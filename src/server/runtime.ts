@@ -218,6 +218,10 @@ export async function* withTimingLog(
       model,
       queueMs: timing.queueMs,
       responseStartMs: timing.responseStartMs,
+      upstreamMs: timing.upstreamMs,
+      // Everything before the successful send that wasn't Kiro: request prep,
+      // token refresh, and any failed attempts with their backoff sleeps.
+      gatewayMs: timing.responseStartMs - timing.upstreamMs,
       firstContentMs,
       streamMs: Date.now() - start,
       credits: credits === null ? null : Number(credits.toFixed(4)),

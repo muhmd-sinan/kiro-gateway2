@@ -79,7 +79,11 @@ export class UsageTracker {
         return
       }
 
-      if (msg.includes('403') || msg.includes('invalid') || msg.includes('bearer token')) {
+      // Auth failures only, keyed on the status fetchUsageLimits puts first
+      // ("Status: 403 (...)"). This used to match any message containing
+      // "invalid" or "403" anywhere — a validation error, a request id — and
+      // count it against a healthy account's failCount.
+      if (/^Status: (401|403)\b/.test(msg) || msg.includes('bearer token')) {
         this.accountManager.markUnhealthy(account, msg)
         this.repository.save(account).catch(() => {})
       }

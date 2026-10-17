@@ -4,6 +4,27 @@ import type { ManagedAccount } from '../../plugin/types'
 
 type ToastFunction = (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
 
+/**
+ * Wait for a 429, from `retry-after` (seconds or an HTTP date).
+ *
+ * The default used to be 60s and the header never reached this code (see the
+ * mock Response in request-handler.ts), so every throttle cost a full minute on
+ * a single account, and on several accounts pushed getMinWaitTime past the
+ * selector's 30s cut-off into the reauth path. Kiro throttles are usually
+ * short; a wrong guess just costs one more 429.
+ */
+const DEFAULT_RETRY_AFTER_MS = 10_000
+
+export function retryAfterMs(header: string | null): number {
+  if (header) {
+    const seconds = Number(header)
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.max(1000, seconds * 1000)
+    const date = Date.parse(header)
+    if (Number.isFinite(date)) return Math.max(1000, date - Date.now())
+  }
+  return DEFAULT_RETRY_AFTER_MS
+}
+
 interface RequestContext {
   retry: number
   bearerRetried?: boolean
@@ -87,7 +108,7 @@ export class ErrorHandler {
     }
 
     if (response.status === 429) {
-      const w = parseInt(response.headers.get('retry-after') || '60') * 1000
+      const w = retryAfterMs(response.headers.get('retry-after'))
       this.accountManager.markRateLimited(account, w)
       await this.repository.batchSave(this.accountManager.getAccounts())
       const count = this.accountManager.getAccountCount()

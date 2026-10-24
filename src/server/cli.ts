@@ -168,7 +168,7 @@ async function main(): Promise<void> {
     'Claude Code:',
     `  $env:ANTHROPIC_BASE_URL="${handle.url}"`,
     `  $env:ANTHROPIC_AUTH_TOKEN="${config.token || 'unused'}"`,
-    '  $env:ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-luna[1m]"',
+    '  $env:ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-haiku-5-5[1m]"',
     '  $env:CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS="1"',
     '',
     'Hermes Agent (~/.hermes/config.yaml):',

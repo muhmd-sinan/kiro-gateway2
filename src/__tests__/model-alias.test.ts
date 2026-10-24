@@ -20,8 +20,9 @@ describe('resolveModelId', () => {
   test('routes haiku/fast tiers to the cheapest model, not Sonnet', () => {
     // Claude Code uses the haiku tier for background work (session titles,
     // classifiers), so this runs on nearly every turn.
-    expect(resolveModelId('haiku', DEFAULT).id).toBe('gpt-5.6-luna')
-    expect(resolveModelId('claude-3-5-haiku-20241022', DEFAULT).id).toBe('gpt-5.6-luna')
+    expect(resolveModelId('haiku', DEFAULT).id).toBe('claude-haiku-5-5')
+    expect(resolveModelId('claude-3-5-haiku-20241022', DEFAULT).id).toBe('claude-haiku-5-5')
+    expect(resolveModelId('claude-haiku-5.5', DEFAULT).id).toBe('claude-haiku-5-5')
   })
 
   test('strips Anthropic date stamps that Claude Code appends', () => {
@@ -41,7 +42,7 @@ describe('resolveModelId', () => {
 
   test('routes dropped open-weight models to the cheapest advertised model', () => {
     for (const probe of ['qwen3-coder-next', 'deepseek-3.2', 'minimax-m2.5', 'minimax-m2.1']) {
-      expect(resolveModelId(probe, DEFAULT).id).toBe('gpt-5.6-luna')
+      expect(resolveModelId(probe, DEFAULT).id).toBe('claude-haiku-5-5')
     }
   })
 
@@ -60,7 +61,7 @@ describe('resolveModelId', () => {
 
   test('sends unknown open-weight families to the cheap tier', () => {
     for (const probe of ['qwen-max', 'deepseek-v3', 'glm-4.6', 'kimi-k2', 'llama-3.1-70b']) {
-      expect(resolveModelId(probe, DEFAULT).id).toBe('gpt-5.6-luna')
+      expect(resolveModelId(probe, DEFAULT).id).toBe('claude-haiku-5-5')
     }
   })
 

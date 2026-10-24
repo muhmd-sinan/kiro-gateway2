@@ -61,6 +61,7 @@ describe('effort module', () => {
       expect(supportsXHighEffort('claude-opus-5')).toBe(true)
       expect(supportsXHighEffort('claude-sonnet-5')).toBe(true)
       expect(supportsXHighEffort('claude-sonnet-5.5')).toBe(true)
+      expect(supportsXHighEffort('claude-haiku-5.5')).toBe(true)
     })
 
     test('returns false for other models', () => {
@@ -277,6 +278,7 @@ describe('effort module', () => {
       // additionalModelRequestFields: property 'thinking'".
       expect(supportsThinkingToggle('claude-opus-5')).toBe(true)
       expect(supportsThinkingToggle('claude-sonnet-4.6')).toBe(true)
+      expect(supportsThinkingToggle('claude-haiku-5.5')).toBe(true)
       expect(supportsThinkingToggle('claude-opus-5.5')).toBe(false)
       expect(supportsThinkingToggle('claude-sonnet-5.5')).toBe(false)
       expect(supportsThinkingToggle('gpt-5.6-luna')).toBe(false)

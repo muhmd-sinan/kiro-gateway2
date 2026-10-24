@@ -70,6 +70,15 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     thinking: true
   },
 
+  'claude-haiku-5-5': {
+    // 0.06x up to 100K input tokens, 0.3x above.
+    name: 'Claude Haiku 5.5',
+    rate: '0.06x',
+    limit: CONTEXT_1M,
+    modalities: MULTIMODAL,
+    thinking: true
+  },
+
   'claude-opus-4-8': {
     name: 'Claude Opus 4.8',
     rate: '2.2x',

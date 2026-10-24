@@ -68,7 +68,8 @@ Don't share tokens or the `kiro.db` file.
 | `claude-sonnet-5-5[1m]` | claude-sonnet-5.5 | Claude Code's `sonnet` tier |
 | `claude-sonnet-5[1m]` | claude-sonnet-5 | |
 | `claude-sonnet-4-6[1m]` | claude-sonnet-4.6-1m | |
-| `claude-sol[1m]` / `claude-terra[1m]` / `claude-luna[1m]` | gpt-5.6-sol / terra / luna | Renamed so Claude Code's model picker shows them. Luna is the `haiku` tier. |
+| `claude-haiku-5-5[1m]` | claude-haiku-5.5 | Claude Code's `haiku` tier (0.06x, 0.3x above 100K) |
+| `claude-sol[1m]` / `claude-terra[1m]` / `claude-luna[1m]` | gpt-5.6-sol / terra / luna | Renamed so Claude Code's model picker shows them. |
 | `auto[1m]` | auto | Kiro picks the model |
 
 Every model has a 1M-token context window. The `[1m]` suffix tells Claude Code that; the proxy
@@ -106,7 +107,7 @@ PowerShell:
 ```powershell
 $env:ANTHROPIC_BASE_URL="http://127.0.0.1:19899"
 $env:ANTHROPIC_AUTH_TOKEN="<token printed at startup>"
-$env:ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-luna[1m]"
+$env:ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-haiku-5-5[1m]"
 $env:CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS="1"
 claude
 ```
@@ -211,7 +212,7 @@ Effort per thinking budget:
 | ≤ 98304 | `xhigh` |
 | > 98304 | `max` |
 
-`xhigh` exists on sonnet-5, sonnet-5.5, opus-4.8, opus-5, opus-5.5 and the GPT models. Elsewhere it's clamped
+`xhigh` exists on haiku-5.5, sonnet-5, sonnet-5.5, opus-4.8, opus-5, opus-5.5 and the GPT models. Elsewhere it's clamped
 to `max`.
 
 Clients can pick effort per request: Claude Code's `output_config.effort` (`/effort`) and OpenAI's
@@ -237,7 +238,7 @@ reason adaptively.
 - **Limits per message:** 4 images (png, jpeg, gif, webp), 5 documents, 4.5 MB per document.
   Anything over the limit or in another format is noted in the message instead of failing the
   request.
-- **Background tasks use GPT 5.6 Luna.** Kiro has no Haiku.
+- **Background tasks use Claude Haiku 5.5**, the cheapest model Kiro serves.
 
 ## Logs and storage
 

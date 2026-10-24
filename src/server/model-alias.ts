@@ -30,11 +30,11 @@ const TIER_MODELS = {
   opus: 'claude-opus-5-5',
   // Verified live 2026-10-05 (scripts/smoke.mjs claude-sonnet-5.5).
   sonnet: 'claude-sonnet-5-5',
-  // Kiro exposes no Haiku, and the cheap open-weight models are no longer
-  // advertised. GPT Luna (0.6x) is the least expensive model left, which matters
+  // Verified live 2026-10-24 (claude-haiku-5.5 replied through the proxy). At
+  // 0.06x (0.3x above 100K) it is the cheapest model Kiro serves, which matters
   // because Claude Code routes session titles and classifiers to the haiku tier
   // on nearly every turn.
-  haiku: 'gpt-5.6-luna'
+  haiku: 'claude-haiku-5-5'
 } as const
 
 /**
@@ -114,6 +114,7 @@ const ALIASES: Record<string, string> = {
   'claude-opus-4.8': 'claude-opus-4-8',
   'claude-opus-5.5': 'claude-opus-5-5',
   'claude-sonnet-5.5': 'claude-sonnet-5-5',
+  'claude-haiku-5.5': 'claude-haiku-5-5',
 
   // Retired models. Kiro's backend still accepts several of these, but they sit
   // below the quality floor this proxy advertises, so requests are lifted to the

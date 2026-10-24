@@ -52,7 +52,7 @@ export const KIRO_CONSTANTS = {
 /**
  * OpenCode-facing model id → Kiro wire model id.
  *
- * Curated rather than exhaustive: Claude (Sonnet 4.6+ / Opus 4.8+) and GPT only.
+ * Curated rather than exhaustive: Claude (Haiku 5.5, Sonnet 4.6+, Opus 4.8+) and GPT only.
  * Kiro's backend also serves older Claude revisions and open-weight models
  * (deepseek, qwen, glm, minimax) which are deliberately not exposed.
  *
@@ -71,6 +71,9 @@ export const MODEL_MAPPING: Record<string, string> = {
   'claude-sonnet-5-thinking': 'claude-sonnet-5',
   'claude-sonnet-5-5': 'claude-sonnet-5.5',
   'claude-sonnet-5-5-thinking': 'claude-sonnet-5.5',
+
+  'claude-haiku-5-5': 'claude-haiku-5.5',
+  'claude-haiku-5-5-thinking': 'claude-haiku-5.5',
 
   'claude-opus-4-8': 'claude-opus-4.8',
   'claude-opus-4-8-thinking': 'claude-opus-4.8',

@@ -104,6 +104,9 @@ const REASONING_CAPABILITIES: Readonly<Record<string, ReasoningCapability>> = {
   'claude-sonnet-4.6-1m': claude(FOUR_LEVELS),
   'claude-sonnet-5': claude(FIVE_LEVELS),
   'claude-sonnet-5.5': claude(FIVE_LEVELS, { thinkingToggleable: false }),
+  // Not in Kiro's effort docs; verified live 2026-10-24: all five levels with thinking
+  // on or off, and reasoning.effort rejected by its schema like the other Claude models.
+  'claude-haiku-5.5': claude(FIVE_LEVELS),
   'claude-opus-4.8': claude(FIVE_LEVELS),
   'claude-opus-5': claude(FIVE_LEVELS),
   'claude-opus-5.5': claude(FIVE_LEVELS, { thinkingToggleable: false }),

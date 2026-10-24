@@ -41,6 +41,11 @@ describe('resolveKiroModel', () => {
     expect(resolveKiroModel('claude-sonnet-4-6-1m-thinking')).toBe('claude-sonnet-4.6-1m')
   })
 
+  test('resolves Haiku 5.5 and its thinking companion', () => {
+    expect(resolveKiroModel('claude-haiku-5-5')).toBe('claude-haiku-5.5')
+    expect(resolveKiroModel('claude-haiku-5-5-thinking')).toBe('claude-haiku-5.5')
+  })
+
   test('resolves the GPT tiers', () => {
     expect(resolveKiroModel('gpt-5.6-luna')).toBe('gpt-5.6-luna')
     expect(resolveKiroModel('gpt-5.6-terra')).toBe('gpt-5.6-terra')

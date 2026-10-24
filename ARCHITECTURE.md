@@ -91,7 +91,7 @@ Three tables, kept separate on purpose:
   model id per session, and `resolveKiroModel` throws on unknown ids, so without these an old
   session would fail on every request.
 - **`server/model-alias.ts`**: the proxy's forgiving layer. It handles Claude Code's tier aliases
-  (`opus` → Opus 5.5, `sonnet` → Sonnet 5.5, `haiku` → GPT Luna), Anthropic date stamps, namespace
+  (`opus` → Opus 5.5, `sonnet` → Sonnet 5.5, `haiku` → Haiku 5.5), Anthropic date stamps, namespace
   prefixes, the `[1m]` suffix, `claude-*` names for GPT models (Claude Code's picker hides ids
   without "claude"), and `PROXY_REDIRECTS`, which win over an exact match. Unknown ids are matched
   by family keyword, then fall back to the default model.
@@ -185,6 +185,7 @@ each model gets exactly the fields it accepts. The table mirrors the schemas Kir
 | Opus 5.5 | `output_config.effort` (low–max, `medium`) | `adaptive` | no |
 | Sonnet 5.5 | `output_config.effort` (low–max, `high`) | `adaptive`, `between_tools` | no |
 | Opus 5, Opus 4.8, Sonnet 5 | `output_config.effort` (low–max, `high`) | `adaptive`, `disabled` | yes |
+| Haiku 5.5 | `output_config.effort` (low–max, default unverified) | `adaptive`, `disabled` (probed live, not from the schema) | yes |
 | Sonnet 4.6 | `output_config.effort` (no `xhigh`, `high`) | `adaptive`, `disabled` | yes |
 | GPT 5.6 | `reasoning.effort` (`none`, low–max, `high`) | field rejected | no |
 
